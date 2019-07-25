@@ -48,6 +48,8 @@
 #define MAX_ON_DEMAND_SUPPLY_NAME_LENGTH	64
 #define BUS_DOWN 1
 
+extern void hw_get_registered_codec(struct snd_soc_codec *codec, bool is_digital_codec);
+
 /*
  * 200 Milliseconds sufficient for DSP bring up in the lpass
  * after Sub System Restart
@@ -1908,6 +1910,50 @@ static int msm_anlg_cdc_ext_spk_boost_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int g_bob_mode = 0;
+static int bob_work_mode_get(struct snd_kcontrol *kcontrol,
+				      struct snd_ctl_elem_value *ucontrol)
+{
+	if (NULL == kcontrol || NULL == ucontrol) {
+		pr_err("input pointer is null\n");
+		return 0;
+	}
+
+	ucontrol->value.integer.value[0] = g_bob_mode;
+	return 0;
+}
+
+static int bob_work_mode_set(struct snd_kcontrol *kcontrol,
+				      struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
+	struct sdm660_cdc_priv *sdm660_cdc =
+					snd_soc_codec_get_drvdata(codec);
+
+	if (!sdm660_cdc->bob_mode_switch) {
+		dev_err(codec->dev, "%s: bob_mode_switch regulator is null", __func__);
+		return -EINVAL;
+	}
+
+	dev_dbg(codec->dev, "%s: ucontrol->value.integer.value[0] = %ld\n",
+			__func__, ucontrol->value.integer.value[0]);
+
+	g_bob_mode = ucontrol->value.integer.value[0];
+	switch (g_bob_mode) {
+	case 0:
+		/* 0 means bob work in mode Auto */
+		regulator_set_load(sdm660_cdc->bob_mode_switch, 0);
+		break;
+	case 1:
+		/* 2000000 means bob work in mode PWM */
+		regulator_set_load(sdm660_cdc->bob_mode_switch, 2000000);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
 
 static const char * const msm_anlg_cdc_loopback_mode_ctrl_text[] = {
 		"DISABLE", "ENABLE"};
@@ -1952,6 +1998,12 @@ static const struct soc_enum msm_anlg_cdc_hph_mode_ctl_enum[] = {
 			msm_anlg_cdc_hph_mode_ctrl_text),
 };
 
+static const char * const bob_work_mode_ctrl_text[] = {
+		"AUTO", "PWM"};
+static const struct soc_enum bob_work_mode_ctl_enum[] = {
+		SOC_ENUM_SINGLE_EXT(2, bob_work_mode_ctrl_text),
+};
+
 /*cut of frequency for high pass filter*/
 static const char * const cf_text[] = {
 	"MIN_3DB_4Hz", "MIN_3DB_75Hz", "MIN_3DB_150Hz"
@@ -1986,8 +2038,8 @@ static const struct snd_kcontrol_new msm_anlg_cdc_snd_controls[] = {
 					8, 0, analog_gain),
 	SOC_SINGLE_TLV("ADC3 Volume", MSM89XX_PMIC_ANALOG_TX_3_EN, 3,
 					8, 0, analog_gain),
-
-
+	SOC_ENUM_EXT("BoB Mode", bob_work_mode_ctl_enum[0],
+		bob_work_mode_get, bob_work_mode_set),
 };
 
 static int tombak_hph_impedance_get(struct snd_kcontrol *kcontrol,
@@ -3672,18 +3724,6 @@ static const struct sdm660_cdc_reg_mask_val
 	{MSM89XX_PMIC_ANALOG_RX_COM_OCP_COUNT, 0xFF, 0xFF},
 };
 
-static void msm_anlg_cdc_codec_init_cache(struct snd_soc_codec *codec)
-{
-	u32 i;
-
-	regcache_cache_only(codec->component.regmap, true);
-	/* update cache with POR values */
-	for (i = 0; i < ARRAY_SIZE(msm89xx_pmic_cdc_defaults); i++)
-		snd_soc_write(codec, msm89xx_pmic_cdc_defaults[i].reg,
-			      msm89xx_pmic_cdc_defaults[i].def);
-	regcache_cache_only(codec->component.regmap, false);
-}
-
 static void msm_anlg_cdc_codec_init_reg(struct snd_soc_codec *codec)
 {
 	u32 i;
@@ -3729,7 +3769,7 @@ static struct regulator *msm_anlg_cdc_find_regulator(
 			return sdm660_cdc->supplies[i].consumer;
 	}
 
-	dev_err(sdm660_cdc->dev, "Error: regulator not found:%s\n"
+	dev_dbg(sdm660_cdc->dev, "Error: regulator not found:%s\n"
 				, name);
 	return NULL;
 }
@@ -4181,7 +4221,6 @@ static int msm_anlg_cdc_soc_probe(struct snd_soc_codec *codec)
 				  ARRAY_SIZE(hph_type_detect_controls));
 
 	msm_anlg_cdc_bringup(codec);
-	msm_anlg_cdc_codec_init_cache(codec);
 	msm_anlg_cdc_codec_init_reg(codec);
 	msm_anlg_cdc_update_reg_defaults(codec);
 
@@ -4225,6 +4264,9 @@ static int msm_anlg_cdc_soc_probe(struct snd_soc_codec *codec)
 
 	snd_soc_dapm_ignore_suspend(dapm, "PDM Playback");
 	snd_soc_dapm_ignore_suspend(dapm, "PDM Capture");
+
+	/*set codec , 0 = analog codec, 1 = digital codec*/
+	hw_get_registered_codec(codec, 0);
 
 	snd_soc_dapm_sync(dapm);
 
@@ -4580,6 +4622,44 @@ err:
 	return;
 }
 
+#define DT_MAX_PROP_SIZE (80)
+static int bob_work_mode_init_supply(struct sdm660_cdc_priv *sdm660_cdc,
+		struct device *dev)
+{
+	const char *switch_supply_str = "bob-work-mode";
+	char prop_name[DT_MAX_PROP_SIZE];
+	struct device_node *regnode = NULL;
+	u32 prop_val;
+	int ret = 0;
+
+	if ((!dev) || (!sdm660_cdc)) {
+		pr_err("%s: input param is null\n", __func__);
+		return -ENODEV;
+	}
+	/* here init bob_mode_switch default value */
+	sdm660_cdc->bob_mode_switch = NULL;
+
+	snprintf(prop_name, DT_MAX_PROP_SIZE, "%s-supply",
+		switch_supply_str);
+	regnode = of_parse_phandle(dev->of_node, prop_name, 0);
+	if (!regnode) {
+		dev_err(dev, "Looking up %s property in node %s failed\n",
+			prop_name, dev->of_node->full_name);
+		return -ENODEV;
+	}
+
+	sdm660_cdc->bob_mode_switch= devm_regulator_get(dev,
+			switch_supply_str);
+	if (IS_ERR(sdm660_cdc->bob_mode_switch)) {
+		ret = PTR_ERR(sdm660_cdc->bob_mode_switch);
+		dev_err(dev, "Failed to get bob work mode supply: err = %d\n",ret);
+		return ret;
+	}
+
+	return ret;
+}
+
+
 static int msm_anlg_cdc_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -4633,6 +4713,13 @@ static int msm_anlg_cdc_probe(struct platform_device *pdev)
 	}
 	/* Allow supplies to be ready */
 	usleep_range(5, 6);
+
+	ret = bob_work_mode_init_supply(sdm660_cdc, &pdev->dev);
+	if (ret<0) {
+		dev_err(&pdev->dev,
+			"%s:bob_work_mode_init_supply failed, may need not supply. (%d)\n",
+			__func__, ret);
+	}
 
 	wcd9xxx_spmi_set_dev(pdev, 0);
 	wcd9xxx_spmi_set_dev(pdev, 1);

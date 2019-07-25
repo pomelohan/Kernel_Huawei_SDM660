@@ -1,0 +1,70 @@
+&spmi_bus {
+	pm660l_3: qcom,pm660l@3 {
+		qcom,leds@d000 {
+			compatible = "qcom,leds-qpnp";
+			reg = <0xd000 0x100>;
+			label = "rgb";
+	
+			/delete-node/ red_led;
+			/delete-node/ green_led;
+			/delete-node/ blue_led;
+	
+			red_led: qcom,rgb_0 {
+				label = "rgb";
+				qcom,id = <3>;
+				qcom,mode = "pwm";
+				pwms = <&pm660l_pwm_3 0 0>;
+				qcom,pwm-us = <1000>;
+				qcom,max-current = <12>;
+				qcom,max-brightness = <255>;
+				qcom,default-state = "off";
+				linux,name = "red";
+				qcom,start-idx = <0>;
+				qcom,idx-len = <25>;
+				qcom,duty-pcts =
+					[00 00 00 00 00 00 00 05 10 20 40 64 
+					64 40 20 10 05 00 00 00 00 00 00 00 00 ];
+				qcom,use-blink = "true";
+				qcom,ramp-step-ms = <100>; 
+			};
+	
+			green_led: qcom,rgb_1 {
+				label = "rgb";
+				qcom,id = <4>;
+				qcom,mode = "pwm";
+				pwms = <&pm660l_pwm_2 0 0>;
+				qcom,pwm-us = <1000>;
+				qcom,max-current = <12>;
+				qcom,max-brightness = <127>;
+				qcom,default-state = "off";
+				linux,name = "green";
+				qcom,start-idx = <0>;
+				qcom,idx-len = <25>;
+				qcom,duty-pcts =
+					[00 00 00 00 00 00 00 05 10 20 40 64 
+					64 40 20 10 05 00 00 00 00 00 00 00 00 ];
+				qcom,use-blink = "true";
+				qcom,ramp-step-ms = <100>; 
+			};
+	
+			blue_led: qcom,rgb_2 {
+				label = "rgb";
+				qcom,id = <5>;
+				qcom,mode = "pwm";
+				pwms = <&pm660l_pwm_1 0 0>;
+				qcom,pwm-us = <1000>;
+				qcom,max-current = <12>;
+				qcom,max-brightness = <255>;
+				qcom,default-state = "off";
+				linux,name = "blue";
+				qcom,start-idx = <0>;
+				qcom,idx-len = <25>;
+				qcom,duty-pcts =
+					[00 00 00 00 00 00 00 05 10 20 40 64 
+					64 40 20 10 05 00 00 00 00 00 00 00 00 ];
+				qcom,use-blink = "true";
+				qcom,ramp-step-ms = <100>; 
+			};
+		};
+	};
+};

@@ -1,0 +1,473 @@
+/* touch panel config */
+&tlmm {
+		/* add pingrp for touchscreen */
+		pmx_ts_int_active {
+			ts_int_active: ts_int_active {
+				mux {
+					pins = "gpio67";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio67";
+					drive-strength = <8>;
+					bias-disable;
+				};
+			};
+		};
+
+		pmx_ts_int_suspend {
+			ts_int_suspend: ts_int_suspend {
+				mux {
+					pins = "gpio67";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio67";
+					drive-strength = <2>;
+					bias-pull-down;
+				};
+			};
+		};
+
+		pmx_ts_reset_active {
+			ts_reset_active: ts_reset_active {
+				mux {
+					pins = "gpio66";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio66";
+					drive-strength = <8>;
+					bias-disable;
+				};
+			};
+		};
+
+		pmx_ts_reset_suspend {
+			ts_reset_suspend: ts_reset_suspend {
+				mux {
+					pins = "gpio66";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio66";
+					drive-strength = <2>;
+					bias-pull-down;
+				};
+			};
+		};
+
+		pmx_ts_release {
+			ts_release: ts_release {
+				mux {
+					pins = "gpio67", "gpio66";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio67", "gpio66";
+					drive-strength = <2>;
+					bias-disable;
+				};
+			};
+		};
+		ts_int_high {
+			ts_int_high: ts_int_high {
+				mux {
+					pins = "gpio67";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio67";
+					drive-strength = <8>;
+					bias-disable;
+					output-high;
+				};
+			};
+		};
+		ts_int_low {
+			ts_int_low: ts_int_low {
+				mux {
+					pins = "gpio67";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio67";
+					drive-strength = <8>;
+					bias-pull-down;
+					output-low;
+				};
+			};
+		};
+};
+
+&soc {
+	i2c@78b7000{
+		status = "ok";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		qcom,clk-freq-out = <400000>;
+	};
+	ts_kit {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "huawei,ts_kit";
+		bus_type = "i2c";
+		bus_id = <4>;
+		product = "ares";
+		reset_gpio = <&tlmm 66 0x00>;
+		irq_gpio = <&tlmm 67 0x2008>;
+		fpga_flag = <0>;
+		goodix@5d {
+			compatible = "goodix";
+			ic_type = <0>;
+			slave_address = <0x5d>;
+			vdd_ana-supply = <&pm660l_l3>; 
+			vcc_i2c-supply = <&pm660_l11>; 
+			pram_projectid_addr = <0x81a0>;
+			support_get_tp_color = <1>;
+			irq_config = <2>;
+			unite_cap_test_interface =<1>;
+			algo_id = <2>;
+			x_max = <720>;
+			y_max = <1440>;
+			x_max_mt = <720>;
+			y_max_mt = <1440>;
+			product_id = "GT917D";
+			tools_support;
+			huawei,test_capacitance_via_csvfile = <1>;
+			huawei,csvfile_use_product_system = <1>;
+			only_open_once_captest_threshold = <1>;
+			need_wd_check_status = <1>;
+			check_status_watchdog_timeout = <2000>;
+			roi_data_size = <7 7>;
+			gesture_supported = <1>;
+			tp_test_type = "Normalize_type:judge_last_result";
+			pinctrl-names = "pmx_ts_active","pmx_ts_suspend","pmx_ts_release","ts_int_high","ts_int_low";
+			pinctrl-0 = <&ts_int_active &ts_reset_active>;
+			pinctrl-1 = <&ts_int_suspend &ts_reset_suspend>;
+			pinctrl-2 = <&ts_release>;
+			pinctrl-3 = <&ts_int_high>;
+			pinctrl-4 = <&ts_int_low>;
+			SENSORID0 {
+				compatible = "goodix-sensorid-0";
+				producer = "hlt";
+				y_max_mt = <1440>;
+				x_max_mt = <720>;
+				raw_data_limit = <9999 1 9999>;     /*rawdata-max*/
+				noise_limit = <999>;
+				shortcircut_threshold = <10 100 100 100 150 150 28>;
+				normal_config = [
+				4B D0 02 A0 05 0A FC 32 11 8F 2F
+				0F 5F 4B 03 05 00 00 60 62 01 12
+				05 16 19 1F 14 C7 27 EE 3C 3E B8
+				08 B8 08 00 C3 33 91 00 00 00 00
+				00 02 C0 08 0A 00 1A 28 50 8A 90
+				54 19 28 00 04 AA 2A 00 97 31 00
+				8A 38 00 7E 41 00 75 4A 00 75 00
+				00 00 00 00 00 00 00 00 00 00 43
+				00 00 00 00 00 00 00 02 00 00 0F
+				32 00 03 00 00 32 05 55 00 00 00
+				00 41 0D 00 01 02 03 04 05 06 07
+				08 09 0A 0B 0C 1B 1A 19 18 17 16
+				15 14 13 12 11 10 0F 0E FF FF 00
+				02 04 05 06 08 0A 1E 1F 20 22 24
+				29 2A FF FF FF 8C 31 3C 3C 00 8C
+				70 12 00 32 4B 5A 19 1E 3C 0F 00
+				06 66 66 0F 10 A5 C5 F5 00 00 00
+				00 00 00 00 00 00 00 00 00 32 2D
+				00 00 0F 14 00 37 5A 00 78 78 95
+				4B 88 00 3C 43 00 00 5A 32 00 00
+				00 00 00 00 00 00 2D 01];
+
+				glove_config = [];
+				holster_config = [];
+				tptest_config = [
+				00 D0 02 A0 05 05 3C 48 01 08
+				28 0F 5A 46 05 05 00 00 00 00
+				00 00 00 17 19 1E 14 87 27 EE
+				96 98 D3 07 00 00 00 B9 32 11
+				00 00 00 00 00 03 00 10 C8 00
+				43 1E 50 94 10 03 07 28 00 04
+				A3 21 00 8A 28 00 74 31 00 64
+				3B 00 55 48 00 56 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 FF 7F 00 55 00 00
+				00 00 00 00 00 01 46 00 00 00
+				00 32 0D 00 01 02 03 04 05 06
+				07 08 09 0A 0B 0C 1B 1A 19 18
+				17 16 15 14 13 12 11 10 0F 0E
+				FF FF 00 02 04 05 06 08 0A 1E
+				1F 20 22 24 29 2A FF FF FF 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 27 01];
+			};
+            SENSORID2 {
+				compatible = "goodix-sensorid-2";
+				producer = "ofilm";
+				y_max_mt = <1440>;
+				x_max_mt = <720>;
+				raw_data_limit = <9999 1 9999>;     /*rawdata-max*/
+				noise_limit = <999>;
+				shortcircut_threshold = <10 100 100 100 150 150 28>;
+				normal_config = [
+				4C D0 02 A0 05 0A FC 32 11 8F 2F
+				0F 5F 50 03 05 00 00 60 62 02 01
+				05 16 19 1F 14 C7 27 EE 3E 40 B8
+				08 B8 08 00 C3 33 91 00 00 00 00
+				00 02 C0 08 0A 00 1A 28 50 8A 90
+				64 19 28 00 04 A9 2A 00 96 31 00
+				89 38 00 7C 41 00 72 4A 00 72 00
+				00 00 00 00 00 00 00 00 00 00 03
+				00 00 00 00 00 00 00 02 00 00 0F
+				32 00 03 00 00 32 06 55 00 00 00
+				00 41 04 13 00 1B 1A 19 18 17 16
+				15 14 01 02 03 10 0F 0E 0D 0C 11
+				12 0B 0A 09 08 07 06 05 FF FF 00
+				02 04 05 06 08 0A 1E 1F 20 22 24
+				29 2A FF FF FF 8C 31 3C 3C 00 8C
+				70 12 00 32 4B 5A 19 1E 4B 00 00
+				06 66 66 0F 10 8B 84 85 00 00 00
+				00 00 00 00 00 00 00 00 00 32 28
+				00 00 0F 14 00 37 53 00 78 78 95
+				00 55 00 3C 43 E0 00 5A 32 08 00
+				00 00 00 00 00 00 DA 01];
+				glove_config = [];
+				holster_config = [];
+				tptest_config = [
+				00 D0 02 A0 05 0A 08 00 01 0F
+				28 0F 82 64 03 05 00 00 00 00
+				00 00 00 00 00 00 00 87 27 EE
+				4C 4E D9 0B 00 00 00 01 03 1D
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 04 13 00 1B 1A 19 18 17
+				16 15 14 01 02 03 10 0F 0E 0D
+				0C 11 12 0B 0A 09 08 07 06 05
+				FF FF 00 02 04 05 06 08 0A 1E
+				1F 20 22 24 29 2A FF FF FF 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 00 79 01];
+			};
+		
+		};
+		parade: ts_kit@1c {
+			compatible = "parade";
+			algo_id = <1>;
+			status = "ok";
+			reg = <0x1c>;
+			slave_address = <0x1c>;
+			parade,adapter_id = "cyttsp5_i2c_adapter";
+			/*project related info*/
+			project_id = "ARES31010";/* default project_id*/
+			chip_vendor = "parade";
+			chip_name = "tt41701";
+			module_vendor = "eely"; /* default vendor*/
+			/*power region*/
+			power_self_ctrl = <1>; /*0-Power is controlled by LCD, 1-Power is self controlled*/
+			/*VCI Power*/
+			vci_power_type = <2>; /*0 - gpio control  1 - ldo  2 - boost & gpio*/
+			parade_vci-supply = <&pm660l_l3>;
+			vci_ldo_value = <3100000>;
+			vci_gpio_enable;
+			vci_boost_enable;
+			/*VDDIO Power*/
+			vddio_power_type = <1>; /*0 - gpio control  1 - ldo  2 - not used*/
+			vddio_gpio_type = <2>; /*0 - gpio control  1 - ldo  2 - not used*/
+			parade_vddio-supply = <&pm660_l11>;
+			vddio_ldo_need_set = <1>;
+			vddio_ldo_value = <1800000>;
+			/*end power region*/
+			roi_supported = <1>;
+			holster_mode_supported = <0>;
+			glove_mode_supported = <0>;
+			should_check_tp_calibration_info = <0>;
+			touch_switch_flag = <0>;
+			parade,sleep_in_mode = <0>;/*0-use sleep command, 1-power down, 2-easy wake*/
+			parade,is_parade_solution = <1>;
+			parade,direct_proc_cmd = <1>;
+			parade,i2c_one_byte = <1>;
+			parade,use_new_oem_structure = <0>;
+			parade,i2c_read_length = <100>;
+			parade,pinctrl_set = <0>;
+			pinctrl-names = "default", "idle";
+			pinctrl-0 = <&ts_int_active
+						&ts_reset_active>;
+			pinctrl-1 = <&ts_int_suspend
+						&ts_reset_suspend>;
+			parade,hid_desc_register = <1>;
+			parade,irq_config = <3>; /* 0 - LOW LEVEL  1 - HIGH LEVEL  2 - RAISE EDGE  3 - FALL EDGE*/
+			parade,core_flags = <0>; /* CY_CORE_FLAG_WAKE_ON_GESTURE */
+			parade,mt_flags = <0>;   /* CY_MT_FLAG_FLIP | CY_MT_FLAG_INV_X | CY_MT_FLAG_INV_Y */
+			parade,slots_max = <32>;
+			parade,easy_wakeup_supported_gestures = <1>;
+			parade,upgrade_ttconfig = <0>;
+			//parade,calibrate_fw_update_and_cmcp = <1>;
+			//check_fw_right_flag = <0x0106>;
+			parade,abs_min_x = <0>;		parade,abs_max_x = <1080>;	/* ABS_MT_POSITION_X, CY_ABS_MIN_X, CY_ABS_MAX_X, 0, 0 */
+			parade,abs_min_y = <0>;		parade,abs_max_y = <2244>;	/* ABS_MT_POSITION_Y, CY_ABS_MIN_Y, CY_ABS_MAX_Y, 0, 0 */
+			parade,abs_min_p = <0>;		parade,abs_max_p = <1080>;	/* ABS_MT_PRESSURE,   CY_ABS_MIN_P, CY_ABS_MAX_P, 0, 0 */
+			parade,abs_min_w = <0>;		parade,abs_max_w = <30>; 	/* CY_IGNORE_VALUE,   CY_ABS_MIN_W, CY_ABS_MAX_W, 0, 0 */
+			parade,abs_min_t = <0>;		parade,abs_max_t = <15>;	/* ABS_MT_TRACKING_ID,CY_ABS_MIN_T, CY_ABS_MAX_T, 0, 0 */
+			parade,abs_min_mj = <0>;	parade,abs_max_mj = <255>;	/* ABS_MT_TOUCH_MAJOR,0, 255, 0, 0 */
+			parade,abs_min_mn = <0>;	parade,abs_max_mn = <255>;	/* ABS_MT_TOUCH_MINOR,0, 255, 0, 0 */
+			parade,abs_min_or = <0>;	parade,abs_max_or = <127>;	/* ABS_MT_ORIENTATION,-128, 127, 0, 0 */
+
+			parade,check_bulcked = <0>;
+			/* for avert misoper algo */
+			feature_all = <0>;
+			feature_resend_point = <1>;
+			feature_orit_support = <1>;
+			feature_reback_bt = <1>;
+			lcd_width = <1080>;
+			lcd_height = <2244>;
+			click_time_limit = <180>;
+			click_time_bt = <200>;
+			edge_position = <40>;
+			edge_postion_secondline = <65>;
+			bt_edge_x = <80>;
+			bt_edge_y = <1000>;
+			move_limit_x = <48>;
+			move_limit_y = <48>;
+			move_limit_x_t = <48>;
+			move_limit_y_t = <48>;
+			move_limit_x_bt = <160>;
+			move_limit_y_bt = <160>;
+			edge_y_confirm_t = <24>;
+			edge_y_dubious_t = <16>;
+			edge_y_avg_bt = <3>;
+			edge_xy_down_bt = <8>;
+			edge_xy_confirm_t = <36>;
+			max_points_bak_num = <15>;
+			drv_stop_width = <10>;
+			sensor_x_width = <4>;
+			sensor_y_width = <4>;
+			feature_sg = <0>;
+			sg_min_value = <32>;
+			feature_support_list = <1>;
+			max_distance_dt = <15>;
+			feature_big_data = <1>;
+			feature_click_inhibition = <1>;
+			min_click_time = <30>;
+			//parade,no_need_doing_after_resume = <1>;
+			get_brightness_info_flag = <0>;
+			create_project_id_flag = <1>;
+			//need_provide_projectID_for_sensor = <1>;
+			//parade,need_distinguish_lcd = <1>;
+			parade,lcd_panel_name_from_lcdkit = <1>;
+			parade,fw_only_depend_on_lcd = <1>;
+			parade,need_surport_second_distinguishability = <1>;
+			parade,sign_of_second_distinguishability = "7p12";
+			parade,abs_max_x_of_second_distinguishability = <1080>;
+			parade,abs_max_y_of_second_distinguishability = <1920>;
+			tp_test_type = "Normalize_type:judge_last_result";
+			//provide_panel_id_suppot = <1>;
+			cp_delta_cap_test_supported = <0>;
+			need_wd_check_status = <1>;
+		};
+		mstar_ts@26 {
+			compatible = "mstar";
+			ic_type = <0xbf>;
+			algo_id = <1>;
+			slave_address = <0x26>;
+			//projectid_addr = <0x81a0>;
+			module_vendor = "lensone"; /* default vendor*/
+			need_wd_check_status = <1>;
+			check_status_watchdog_timeout = <3000>;
+			mstar_irq_config = <3>;
+			x_max = <1080>;
+			y_max = <2244>;
+			x_max_mt = <1080>;
+			y_max_mt = <2244>;
+			/*power region*/
+			power_self_ctrl = <1>; /*0-Power is controlled by LCD, 1-Power is self controlled*/
+			/*VCI Power*/
+			vci_power_type = <2>; /*0 - gpio control  1 - ldo  2 - boost & gpio*/
+			mstar_vci-supply = <&pm660l_l3>;
+			vci_ldo_value = <3100000>;
+			vci_gpio_enable;
+			vci_boost_enable;
+			/*VDDIO Power*/
+			vddio_power_type = <1>; /*0 - gpio control  1 - ldo  2 - not used*/
+			vddio_gpio_type = <2>; /*0 - gpio control  1 - ldo  2 - not used*/
+			mstar_vddio-supply = <&pm660_l11>;
+			vddio_ldo_need_set = <1>;
+			vddio_ldo_value = <1800000>;
+			/*end power region*/
+			mstar,pinctrl_set = <0>;
+			pinctrl-names = "default", "idle";
+			pinctrl-0 = <&ts_int_active
+						&ts_reset_active>;
+			pinctrl-1 = <&ts_int_suspend
+						&ts_reset_suspend>;
+			unite_cap_test_interface = <1>;
+			report_rate_test =<0>;
+			fw_upgrade_delay = <10000>;
+			capacitance_test_config = <1>;
+			chip_id = <0xbf>;
+			write_flash_query_times = <30>;
+			read_ecc_query_times = <100>;
+			erase_flash_query_times = <15>;
+			upgrade_loop_times = <5>;
+			glove_switch_addr = <0xC0>;
+			roi_supported = <1>;
+			holster_mode_supported = <0>;
+			glove_mode_supported = <0>;
+			mstar_mp_flow = <2>;
+			mstar_mp_retry = <3>;
+			rawdata_timeout = <10>;
+			mstar,product_id = "MSG2856A";
+			mstar,test-types = <0x80007>;
+			mstar,panel-max = <2048>;
+			mstar,panel-min = <2048>;
+			mstar,panel-deviation = <44000>;
+			mstar,key-max = <0>;
+			mstar,key-min = <0>;
+			mstar,key-nc = <0>;
+			mstar,apk_gesture_mode = <0>;
+			support_get_tp_color = <0>;
+			gesture_supported = <1>;
+			lcd_panel_name_from_lcdkit = <1>;
+			fw_only_depend_on_lcd = <1>;
+			ares760600 {
+				producer = "lensone";
+				compatible = "mstar-ares760600";
+			};
+			ares760601 {
+				producer = "lensone";
+				compatible = "mstar-ares760601";
+			};
+		};
+	};
+	/*To disable gen-vkeys.c probe,avoid generate kobject*/
+	gen-vkeys {
+		compatible = "huawei,gen-vkeys";
+		label = "synaptics_rmi4_i2c";
+		qcom,disp-maxx = <720>;
+		qcom,disp-maxy = <1440>;
+		qcom,panel-maxx = <720>;
+		qcom,panel-maxy = <1440>;
+		qcom,key-codes = <158 172 139>;
+	};
+};

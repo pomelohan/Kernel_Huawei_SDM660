@@ -103,6 +103,8 @@ config ARM64
 	select SYSCTL_EXCEPTION_TRACE
 	select HAVE_CONTEXT_TRACKING
 	select HAVE_ARM_SMCCC
+	select ARCH_HAS_KCOV
+	select HAVE_LIVEPATCH
 	help
 	  ARM 64-bit (AArch64) Linux support.
 
@@ -250,6 +252,8 @@ config PGTABLE_LEVELS
 source "init/Kconfig"
 
 source "kernel/Kconfig.freezer"
+
+source "kernel/livepatch/Kconfig"
 
 source "arch/arm64/Kconfig.platforms"
 
@@ -1180,4 +1184,40 @@ if CRYPTO
 source "arch/arm64/crypto/Kconfig"
 endif
 
+config HUAWEI_KERNEL
+        bool "Use huawei code"
+        default n
+        help
+          use huawei code
+
+config HUAWEI_QCOM_MMC
+        bool "Use huawei mmc code"
+        default n
+        help
+          use huawei mmc code
+
+config HUAWEI_KERNEL
+        bool "Use huawei code"
+        default n
+        help
+          use huawei code
+
+config HUAWEI_KERNEL_DEBUG
+        bool "Use Huawei kernel debug mode"
+        depends on HUAWEI_KERNEL
+        default n
+        help
+          Enable sysrq, dump mode and some debug masks by default.
+
+config RAINBOW_RESET_DETECT
+	default n
+	  bool "rainbow_reset_detect"
+	help
+	  only open on eng mode.
+
+config RAINBOW_DEBUG_MACRO
+	default n
+	  bool "rainbow_debug"
+	help
+	  only open on eng mode.
 source "lib/Kconfig"

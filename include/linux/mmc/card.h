@@ -15,6 +15,11 @@
 #include <linux/mmc/mmc.h>
 #include <linux/mod_devicetable.h>
 #include <linux/notifier.h>
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+#define EXT_CSD_PRE_EOL_INFO_NORMAL     0x01
+#define EXT_CSD_PRE_EOL_INFO_WARNING     0x02
+#define EXT_CSD_PRE_EOL_INFO_URGENT     0x03
+#endif
 
 #define MMC_CARD_CMDQ_BLK_SIZE 512
 
@@ -109,7 +114,11 @@ struct mmc_ext_csd {
 	u8			raw_ext_csd_structure;	/* 194 */
 	u8			raw_card_type;		/* 196 */
 	u8			raw_driver_strength;	/* 197 */
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	u16			out_of_int_time;	/* 198 */
+#else
 	u8			out_of_int_time;	/* 198 */
+#endif
 	u8			raw_pwr_cl_52_195;	/* 200 */
 	u8			raw_pwr_cl_26_195;	/* 201 */
 	u8			raw_pwr_cl_52_360;	/* 202 */
@@ -138,8 +147,11 @@ struct mmc_ext_csd {
 	u8			cmdq_support;		/* 308 */
 	u8			barrier_support;	/* 486 */
 	u8			barrier_en;
-
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	u64			fw_version;		/* 254 - 8 bytes */
+#else
 	u8			fw_version;		/* 254 */
+#endif
 	unsigned int            feature_support;
 #define MMC_DISCARD_FEATURE	BIT(0)                  /* CMD38 feature */
 };
@@ -159,6 +171,9 @@ struct sd_ssr {
 	unsigned int		au;			/* In sectors */
 	unsigned int		erase_timeout;		/* In milliseconds */
 	unsigned int		erase_offset;		/* In milliseconds */
+#ifdef CONFIG_HW_SD_HEALTH_DETECT
+	unsigned int		speed_class;
+#endif
 };
 
 struct sd_switch_caps {
@@ -414,6 +429,12 @@ struct mmc_card {
 	struct sd_ssr		ssr;		/* yet more SD information */
 	struct sd_switch_caps	sw_caps;	/* switch (CMD6) caps */
 
+#ifdef CONFIG_MMC_PASSWORDS
+	bool swith_voltage; 			/* whether sdcard voltage swith to 1.8v  */
+	bool auto_unlock;
+	u8   unlock_pwd[20]; // 1(len) + max_pwd(16) + 0xFF 0xFF + 0 = 20
+#endif
+
 	unsigned int		sdio_funcs;	/* number of SDIO functions */
 	struct sdio_cccr	cccr;		/* common card info */
 	struct sdio_cis		cis;		/* common tuple info */
@@ -435,6 +456,7 @@ struct mmc_card {
 	struct mmc_wr_pack_stats wr_pack_stats; /* packed commands stats*/
 	struct notifier_block        reboot_notify;
 	enum mmc_pon_type pon_type;
+	u8 *cached_ext_csd;
 	bool cmdq_init;
 	struct mmc_bkops_info bkops;
 	bool err_in_sdr104;

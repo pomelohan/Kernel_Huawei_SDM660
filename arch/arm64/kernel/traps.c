@@ -47,6 +47,10 @@
 
 #include <trace/events/exception.h>
 
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+#include <linux/rainbow_reset_detect_api.h>
+#endif
+
 static const char *handler[]= {
 	"Synchronous Abort",
 	"IRQ",
@@ -345,6 +349,9 @@ void arm64_notify_die(const char *str, struct pt_regs *regs,
 		current->thread.fault_code = err;
 		force_sig_info(info->si_signo, info, current);
 	} else {
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+		rainbow_reset_detect_s_reason_str_set(str);
+#endif
 		die(str, regs, err);
 	}
 }
@@ -431,7 +438,9 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 			current->comm, task_pid_nr(current), pc);
 		dump_instr(KERN_INFO, regs);
 	}
-
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+	rainbow_reset_detect_s_reason_set(FD_S_APANIC_UNDEF_CMD);
+#endif
 	info.si_signo = SIGILL;
 	info.si_errno = 0;
 	info.si_code  = ILL_ILLOPC;
@@ -551,6 +560,11 @@ asmlinkage void bad_mode(struct pt_regs *regs, int reason, unsigned int esr)
 
 	pr_crit("Bad mode in %s handler detected, code 0x%08x -- %s\n",
 		handler[reason], esr, esr_get_class_string(esr));
+
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+	rainbow_reset_detect_s_reason_set(FD_S_APANIC_BAD_MODE);
+	rainbow_reset_detect_s_reason_str_set_format("Bad_mode_%s",handler[reason]);
+#endif
 
 	if (esr >> ESR_ELx_EC_SHIFT == ESR_ELx_EC_SERROR) {
 		pr_crit("System error detected. ESR.ISS = %08x\n",

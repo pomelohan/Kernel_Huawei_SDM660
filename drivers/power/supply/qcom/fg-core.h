@@ -177,6 +177,7 @@ enum fg_sram_param_id {
 	FG_SRAM_ESR_TIGHT_FILTER,
 	FG_SRAM_ESR_BROAD_FILTER,
 	FG_SRAM_SLOPE_LIMIT,
+	FG_SRAM_VOLTAGE_SHADOW,
 	FG_SRAM_MAX,
 };
 
@@ -280,6 +281,7 @@ struct fg_dt_props {
 	int	ki_coeff_hi_dischg[KI_COEFF_SOC_LEVELS];
 	int	slope_limit_coeffs[SLOPE_LIMIT_NUM_COEFFS];
 	u8	batt_therm_coeffs[BATT_THERM_NUM_COEFFS];
+	int	vbattestdiff;
 };
 
 /* parameters from battery profile */

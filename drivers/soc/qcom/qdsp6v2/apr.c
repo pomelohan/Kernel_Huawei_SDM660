@@ -35,6 +35,9 @@
 #include <linux/qdsp6v2/dsp_debug.h>
 #include <linux/qdsp6v2/audio_notifier.h>
 #include <linux/ipc_logging.h>
+#ifdef CONFIG_HUAWEI_DSM_AUDIO
+#include <dsm_audio/dsm_audio.h>
+#endif
 
 #define APR_PKT_IPC_LOG_PAGE_CNT 2
 
@@ -44,7 +47,8 @@ static void *apr_pkt_ctx;
 static wait_queue_head_t dsp_wait;
 static wait_queue_head_t modem_wait;
 static bool is_modem_up;
-static bool is_initial_boot;
+static bool is_initial_modem_boot;
+static bool is_initial_adsp_boot;
 /* Subsystem restart: QDSP6 data, functions */
 static struct workqueue_struct *apr_reset_workqueue;
 static void apr_reset_deregister(struct work_struct *work);
@@ -341,6 +345,9 @@ int apr_send_pkt(void *handle, uint32_t *buf)
 	if ((svc->dest_id == APR_DEST_QDSP6) &&
 	    (apr_get_q6_state() != APR_SUBSYS_LOADED)) {
 		pr_err("%s: Still dsp is not Up\n", __func__);
+#ifdef CONFIG_HUAWEI_DSM_AUDIO
+		audio_dsm_report_info(AUDIO_CODEC,DSM_AUDIO_MODEM_CRASH_ERROR_NO,"dsm audio mesg: qdsp still not up");
+#endif
 		return -ENETRESET;
 	} else if ((svc->dest_id == APR_DEST_MODEM) &&
 		   (apr_get_modem_state() == APR_SUBSYS_DOWN)) {
@@ -888,21 +895,28 @@ static int apr_notifier_service_cb(struct notifier_block *this,
 		 * recovery notifications during initial boot
 		 * up since everything is expected to be down.
 		 */
-		if (is_initial_boot) {
-			is_initial_boot = false;
-			break;
-		}
-		if (cb_data->domain == AUDIO_NOTIFIER_MODEM_DOMAIN)
+		if (cb_data->domain == AUDIO_NOTIFIER_MODEM_DOMAIN) {
+			if (is_initial_modem_boot) {
+				is_initial_modem_boot = false;
+				break;
+			}
 			apr_modem_down(opcode);
-		else
+		} else {
+			if (is_initial_adsp_boot) {
+				is_initial_adsp_boot = false;
+				break;
+			}
 			apr_adsp_down(opcode);
+		}
 		break;
 	case AUDIO_NOTIFIER_SERVICE_UP:
-		is_initial_boot = false;
-		if (cb_data->domain == AUDIO_NOTIFIER_MODEM_DOMAIN)
+		if (cb_data->domain == AUDIO_NOTIFIER_MODEM_DOMAIN) {
+			is_initial_modem_boot = false;
 			apr_modem_up();
-		else
+		} else {
+			is_initial_adsp_boot = false;
 			apr_adsp_up();
+		}
 		break;
 	default:
 		break;
@@ -944,7 +958,8 @@ static int __init apr_init(void)
 	if (!apr_pkt_ctx)
 		pr_err("%s: Unable to create ipc log context\n", __func__);
 
-	is_initial_boot = true;
+	is_initial_modem_boot = true;
+	is_initial_adsp_boot = true;
 	subsys_notif_register("apr_adsp", AUDIO_NOTIFIER_ADSP_DOMAIN,
 			      &adsp_service_nb);
 	subsys_notif_register("apr_modem", AUDIO_NOTIFIER_MODEM_DOMAIN,

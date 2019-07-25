@@ -100,6 +100,9 @@ enum dsi_panel_bl_ctrl {
 	BL_PWM,
 	BL_WLED,
 	BL_DCS_CMD,
+	#ifdef CONFIG_LCDKIT_DRIVER
+	BL_IC_TI,
+	#endif
 	UNKNOWN_CTRL,
 };
 
@@ -451,13 +454,21 @@ struct mdss_dsi_ctrl_pdata {
 	int irq_cnt;
 	int disp_te_gpio;
 	int rst_gpio;
+	int tp_rst_gpio;
 	int disp_en_gpio;
+
+	#ifdef CONFIG_LCDKIT_DRIVER
+	int disp_bl_gpio;
+	#endif
+
 	int bklt_en_gpio;
 	bool bklt_en_gpio_invert;
 	bool bklt_en_gpio_state;
 	int avdd_en_gpio;
 	bool avdd_en_gpio_invert;
 	int lcd_mode_sel_gpio;
+	int mode_gpio;
+	int intf_mux_gpio;
 	int bklt_ctrl;	/* backlight ctrl */
 	enum dsi_ctrl_op_mode bklt_dcs_op_mode; /* backlight dcs ctrl mode */
 	bool pwm_pmi;
@@ -472,6 +483,7 @@ struct mdss_dsi_ctrl_pdata {
 	bool dsi_irq_line;
 	bool dcs_cmd_insert;
 	atomic_t te_irq_ready;
+	bool idle;
 
 	bool cmd_sync_wait_broadcast;
 	bool cmd_sync_wait_trigger;
@@ -500,6 +512,8 @@ struct mdss_dsi_ctrl_pdata {
 	struct dsi_panel_cmds lp_on_cmds;
 	struct dsi_panel_cmds lp_off_cmds;
 	struct dsi_panel_cmds status_cmds;
+	struct dsi_panel_cmds idle_on_cmds; /* for lp mode */
+	struct dsi_panel_cmds idle_off_cmds;
 	u32 *status_valid_params;
 	u32 *status_cmds_rlen;
 	u32 *status_value;

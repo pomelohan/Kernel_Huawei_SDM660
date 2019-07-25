@@ -21,6 +21,9 @@
 
 #define MODULE_ARCH_VERMAGIC	"aarch64"
 
+extern int static_relocate(struct module *mod, unsigned long type,
+			void * loc, unsigned long value);
+
 #ifdef CONFIG_ARM64_MODULE_PLTS
 struct mod_arch_specific {
 	struct elf64_shdr	*plt;
@@ -31,6 +34,10 @@ struct mod_arch_specific {
 
 u64 module_emit_plt_entry(struct module *mod, const Elf64_Rela *rela,
 			  Elf64_Sym *sym);
+
+#ifdef CONFIG_LIVEPATCH
+u64 livepatch_emit_plt_entry(struct module *mod, unsigned long val);
+#endif
 
 #ifdef CONFIG_RANDOMIZE_BASE
 #ifdef CONFIG_MODVERSIONS

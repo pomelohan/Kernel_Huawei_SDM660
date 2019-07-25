@@ -18,6 +18,8 @@
 #include <asm/uaccess.h>
 #include <asm/page.h>
 
+#define PAGE_ALLOC_COUNT    4
+
 static void seq_set_overflow(struct seq_file *m)
 {
 	m->count = m->size;
@@ -34,11 +36,18 @@ static void *seq_buf_alloc(unsigned long size)
 	 * allocations, just use GFP_KERNEL which will oom kill, thus no need
 	 * for vmalloc fallback.
 	 */
-	if (size > PAGE_SIZE)
-		gfp |= __GFP_NORETRY | __GFP_NOWARN;
-	buf = kmalloc(size, gfp);
-	if (!buf && size > PAGE_SIZE)
+	if (size > PAGE_ALLOC_COUNT * PAGE_SIZE) {
 		buf = vmalloc(size);
+	} else  {
+		if (size > PAGE_SIZE)
+			gfp |= __GFP_NORETRY | __GFP_NOWARN;
+
+		buf = kmalloc(size, gfp);
+
+		if (!buf && size > PAGE_SIZE)
+			buf = vmalloc(size);
+	}
+
 	return buf;
 }
 

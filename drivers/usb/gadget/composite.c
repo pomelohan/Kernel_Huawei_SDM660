@@ -21,6 +21,9 @@
 #include <linux/usb/composite.h>
 #include <linux/usb/otg.h>
 #include <asm/unaligned.h>
+#ifdef CONFIG_HUAWEI_USB
+#include <chipset_common/hwusb/hw_usb_rwswitch.h>
+#endif
 
 #include "u_os_desc.h"
 #define SSUSB_GADGET_VBUS_DRAW 900 /* in mA */

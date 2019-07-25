@@ -527,3 +527,11 @@ endif # POWER_SUPPLY
 
 source "drivers/power/avs/Kconfig"
 source "drivers/power/qcom/Kconfig"
+source "drivers/power/huawei/Kconfig"
+source "drivers/power/usb_short_circuit_protect/Kconfig"
+source "drivers/power/hw_kstate/Kconfig"
+source "drivers/power/dubai/Kconfig"
+config HUAWEI_SLEEPLOG
+     bool "huawei sleeplog"
+     default n
+     help

@@ -508,9 +508,16 @@ static int enter_state(suspend_state_t state)
 
 #ifndef CONFIG_SUSPEND_SKIP_SYNC
 	trace_suspend_resume(TPS("sync_filesystems"), 0, true);
+
+#ifdef CONFIG_HW_SYS_SYNC
+	printk(KERN_INFO "PM: Syncing filesystems put the sync in the queue... ");
+	suspend_sys_sync_queue();
+	printk("put it done.\n");
+#else
 	printk(KERN_INFO "PM: Syncing filesystems ... ");
 	sys_sync();
 	printk("done.\n");
+#endif
 	trace_suspend_resume(TPS("sync_filesystems"), 0, false);
 #endif
 

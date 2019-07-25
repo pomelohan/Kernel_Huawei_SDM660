@@ -79,4 +79,10 @@ static inline long shmem_fcntl(struct file *f, unsigned int c, unsigned long a)
 
 #endif
 
+extern const struct address_space_operations shmem_aops;
+
+#ifdef CONFIG_LATE_UNMAP
+extern void shmem_page_unmap(struct page *page);
+#endif
+
 #endif

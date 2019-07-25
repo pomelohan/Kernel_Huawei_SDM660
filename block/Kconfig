@@ -131,4 +131,9 @@ config BLOCK_COMPAT
 	depends on BLOCK && COMPAT
 	default y
 
+config HW_SYSTEM_WR_PROTECT
+	bool "write protection function of system partitions."
+	depends on BLOCK && HUAWEI_QCOM_MMC
+	default n
+
 source block/Kconfig.iosched

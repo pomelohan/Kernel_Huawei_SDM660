@@ -471,6 +471,9 @@ struct wcd_mbhc {
 	struct power_supply *usb_psy;
 	struct work_struct usbc_analog_work;
 	bool force_linein;
+
+    /* Delayed work to report vol+ press for camera */
+	struct delayed_work btn_take_pic_dwork;
 };
 #define WCD_MBHC_CAL_SIZE(buttons, rload) ( \
 	sizeof(struct wcd_mbhc_general_cfg) + \

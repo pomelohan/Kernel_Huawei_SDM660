@@ -33,6 +33,10 @@
 
 #include <soc/qcom/smem.h>
 
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+#include <linux/rainbow_reset_detect_api.h>
+#endif
+
 #include "peripheral-loader.h"
 
 #define XO_FREQ			19200000
@@ -804,7 +808,25 @@ static void log_failure_reason(const struct pil_tz_data *d)
 
 	strlcpy(reason, smem_reason, min(size, MAX_SSR_REASON_LEN));
 	pr_err("%s subsystem failure reason: %s.\n", name, reason);
-
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+	if(0==strcmp("adsp",name))
+	{
+		rainbow_reset_detect_s_reason_set(FD_S_SUBSYSTEM_ADSP_CRASH);
+	}
+	else if(0==strcmp("wcnss",name))
+	{
+		rainbow_reset_detect_s_reason_set(FD_S_SUBSYSTEM_WCNSS_CRASH);
+	}
+	else if(0==strcmp("venus",name))
+	{
+		rainbow_reset_detect_s_reason_set(FD_S_SUBSYSTEM_VENUS_CRASH);
+	}
+	else
+	{
+		rainbow_reset_detect_s_reason_set(FD_S_SUBSYSTEM_UNKOWN_CRASH);
+	}
+	rainbow_reset_detect_s_reason_str_set_format("%s_crash",name);
+#endif
 	smem_reason[0] = '\0';
 	wmb();
 }

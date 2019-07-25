@@ -23,6 +23,7 @@
 #include <linux/slab.h>
 #include <linux/swap.h>
 #include <linux/vmalloc.h>
+#include <linux/vmstat.h>
 #include "ion_priv.h"
 
 static void *ion_page_pool_alloc_pages(struct ion_page_pool *pool)
@@ -57,6 +58,8 @@ static void ion_page_pool_free_pages(struct ion_page_pool *pool,
 static int ion_page_pool_add(struct ion_page_pool *pool, struct page *page)
 {
 	mutex_lock(&pool->mutex);
+	zone_page_state_add(1L << pool->order, page_zone(page),
+			    NR_IONCACHE_PAGES);
 	if (PageHighMem(page)) {
 		list_add_tail(&page->lru, &pool->high_items);
 		pool->high_count++;
@@ -81,7 +84,8 @@ static struct page *ion_page_pool_remove(struct ion_page_pool *pool, bool high)
 		page = list_first_entry(&pool->low_items, struct page, lru);
 		pool->low_count--;
 	}
-
+	zone_page_state_add(-(1L << pool->order), page_zone(page),
+			    NR_IONCACHE_PAGES);
 	list_del(&page->lru);
 	return page;
 }

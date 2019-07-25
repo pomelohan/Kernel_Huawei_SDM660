@@ -35,6 +35,15 @@
 #include <linux/cleancache.h>
 #include <linux/rmap.h>
 #include "internal.h"
+#include <linux/iolimit_cgroup.h>
+
+#ifdef CONFIG_TASK_PROTECT_LRU
+#include <linux/protect_lru.h>
+#endif
+
+#ifdef CONFIG_HW_MEMORY_MONITOR
+#include <chipset_common/mmonitor/mmonitor.h>
+#endif
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/filemap.h>
@@ -46,6 +55,17 @@
 
 #include <asm/mman.h>
 
+#ifdef CONFIG_HUAWEI_IO_TRACING
+#include <iotrace/iotrace.h>
+DEFINE_TRACE(generic_perform_write_enter);
+DEFINE_TRACE(generic_perform_write_end);
+DEFINE_TRACE(generic_file_read_begin);
+DEFINE_TRACE(generic_file_read_end);
+#endif
+
+#ifdef CONFIG_HW_CGROUP_WORKINGSET
+#include <linux/workingset_cgroup.h>
+#endif
 /*
  * Shared mappings implemented 30.11.1994. It's not fully working yet,
  * though.
@@ -707,6 +727,9 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 			workingset_activation(page);
 		} else
 			ClearPageActive(page);
+#ifdef CONFIG_TASK_PROTECT_LRU
+		protect_lru_set_from_file(page);
+#endif
 		lru_cache_add(page);
 	}
 	return ret;
@@ -1204,7 +1227,11 @@ no_page:
 		}
 	}
 
+#ifdef CONFIG_TASK_PROTECT_LRU
+	return protect_lru_move_and_shrink(page);
+#else
 	return page;
+#endif
 }
 EXPORT_SYMBOL(pagecache_get_page);
 
@@ -1556,6 +1583,9 @@ static ssize_t do_generic_file_read(struct file *filp, loff_t *ppos,
 	last_index = (*ppos + iter->count + PAGE_CACHE_SIZE-1) >> PAGE_CACHE_SHIFT;
 	offset = *ppos & ~PAGE_CACHE_MASK;
 
+#ifdef CONFIG_HUAWEI_IO_TRACING
+	trace_generic_file_read_begin(filp, iter->count);
+#endif
 	for (;;) {
 		struct page *page;
 		pgoff_t end_index;
@@ -1563,6 +1593,9 @@ static ssize_t do_generic_file_read(struct file *filp, loff_t *ppos,
 		unsigned long nr, ret;
 
 		cond_resched();
+#ifdef CONFIG_CGROUP_IOLIMIT
+		io_read_bandwidth_control(PAGE_CACHE_SIZE);
+#endif
 find_page:
 		if (fatal_signal_pending(current)) {
 			error = -EINTR;
@@ -1570,7 +1603,13 @@ find_page:
 		}
 
 		page = find_get_page(mapping, index);
+#ifdef CONFIG_HW_MEMORY_MONITOR
+		count_mmonitor_event(FILE_CACHE_READ_COUNT);
+#endif
 		if (!page) {
+#ifdef CONFIG_HW_MEMORY_MONITOR
+			count_mmonitor_event(FILE_CACHE_MISS_COUNT);
+#endif
 			page_cache_sync_readahead(mapping,
 					ra, filp,
 					index, last_index - index);
@@ -1690,6 +1729,8 @@ readpage:
 		ClearPageError(page);
 		/* Start the actual read. The read will unlock the page. */
 		error = mapping->a_ops->readpage(filp, page);
+		blk_throtl_get_quota(inode->i_sb->s_bdev, PAGE_SIZE,
+				     msecs_to_jiffies(100), true);
 
 		if (unlikely(error)) {
 			if (error == AOP_TRUNCATED_PAGE) {
@@ -1752,10 +1793,15 @@ no_cached_page:
 	}
 
 out:
+#ifdef CONFIG_HUAWEI_IO_TRACING
+	trace_generic_file_read_end(filp, written);
+#endif
 	ra->prev_pos = prev_index;
 	ra->prev_pos <<= PAGE_CACHE_SHIFT;
 	ra->prev_pos |= prev_offset;
-
+#ifdef CONFIG_HW_CGROUP_WORKINGSET
+	workingset_pagecache_on_readfile(filp, ppos, index, offset);
+#endif
 	*ppos = ((loff_t)index << PAGE_CACHE_SHIFT) + offset;
 	file_accessed(filp);
 	return written ? written : error;
@@ -1965,15 +2011,25 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	 * Do we have something in the page cache already?
 	 */
 	page = find_get_page(mapping, offset);
+#ifdef CONFIG_HW_CGROUP_WORKINGSET
+	workingset_pagecache_on_pagefault(file, offset);
+#endif
+#ifdef CONFIG_HW_MEMORY_MONITOR
+	count_mmonitor_event(FILE_CACHE_MAP_COUNT);
+#endif
 	if (likely(page) && !(vmf->flags & FAULT_FLAG_TRIED)) {
 		/*
 		 * We found the page, so try async readahead before
 		 * waiting for the lock.
 		 */
+		task_set_in_pagefault(current);
 		do_async_mmap_readahead(vma, ra, file, page, offset);
+		task_clear_in_pagefault(current);
 	} else if (!page) {
 		/* No page in the page cache at all */
+		task_set_in_pagefault(current);
 		do_sync_mmap_readahead(vma, ra, file, offset);
+		task_clear_in_pagefault(current);
 		count_vm_event(PGMAJFAULT);
 		mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
 		ret = VM_FAULT_MAJOR;
@@ -2022,7 +2078,9 @@ no_cached_page:
 	 * We're only likely to ever get here if MADV_RANDOM is in
 	 * effect.
 	 */
+	task_set_in_pagefault(current);
 	error = page_cache_read(file, offset);
+	task_clear_in_pagefault(current);
 
 	/*
 	 * The page we want has now been added to the page cache.
@@ -2049,7 +2107,9 @@ page_not_uptodate:
 	 * and we need to check for errors.
 	 */
 	ClearPageError(page);
+	task_set_in_pagefault(current);
 	error = mapping->a_ops->readpage(file, page);
+	task_clear_in_pagefault(current);
 	if (!error) {
 		wait_on_page_locked(page);
 		if (!PageUptodate(page))
@@ -2523,7 +2583,9 @@ ssize_t generic_perform_write(struct file *file,
 		unsigned long bytes;	/* Bytes to write to page */
 		size_t copied;		/* Bytes copied from user */
 		void *fsdata;
-
+#ifdef CONFIG_CGROUP_IOLIMIT
+		io_write_bandwidth_control(PAGE_CACHE_SIZE);
+#endif
 		offset = (pos & (PAGE_CACHE_SIZE - 1));
 		bytes = min_t(unsigned long, PAGE_CACHE_SIZE - offset,
 						iov_iter_count(i));

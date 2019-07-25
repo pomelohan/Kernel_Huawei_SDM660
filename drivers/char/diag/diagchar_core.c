@@ -373,8 +373,8 @@ static int diagchar_open(struct inode *inode, struct file *file)
 	return -ENOMEM;
 
 fail:
-	mutex_unlock(&driver->diagchar_mutex);
 	driver->num_clients--;
+	mutex_unlock(&driver->diagchar_mutex);
 	pr_err_ratelimited("diag: Insufficient memory for new client");
 	return -ENOMEM;
 }
@@ -790,6 +790,13 @@ struct diag_cmd_reg_entry_t *diag_cmd_search(
 			    temp_entry->cmd_code_hi >= entry->cmd_code_hi &&
 			    temp_entry->cmd_code_lo <= entry->cmd_code_lo &&
 			    (proc == item->proc || proc == ALL_PROC)) {
+				return &item->entry;
+			}
+		} else if (temp_entry->cmd_code == DIAG_CMD_NO_SUBSYS &&
+					   temp_entry->subsys_id == 0xF6 && entry->cmd_code == 0xF6){
+			if(temp_entry->cmd_code_hi >= entry->subsys_id &&
+			   temp_entry->cmd_code_lo <= entry->subsys_id &&
+			   (proc == item->proc || proc == ALL_PROC)){
 				return &item->entry;
 			}
 		} else if (temp_entry->cmd_code == DIAG_CMD_NO_SUBSYS &&

@@ -25,7 +25,9 @@
 #include <linux/nmi.h>
 #include <linux/console.h>
 #include <soc/qcom/minidump.h>
-
+#ifdef CONFIG_HUAWEI_BFM
+#include <chipset_common/bfmr/bfm/chipsets/qcom/bfm_qcom.h>
+#endif
 #define CREATE_TRACE_POINTS
 #include <trace/events/exception.h>
 
@@ -80,7 +82,9 @@ void panic(const char *fmt, ...)
 	va_list args;
 	long i, i_next = 0;
 	int state = 0;
-
+#ifdef CONFIG_HUAWEI_BFM
+qcom_set_boot_fail_flag(KERNEL_AP_PANIC);
+#endif
 	trace_kernel_panic(0);
 
 	/*

@@ -241,6 +241,9 @@ struct sock_common {
 		u32		skc_tw_snd_nxt; /* struct tcp_timewait_sock */
 	};
 	/* public: */
+    #ifdef CONFIG_HW_DPIMARK_MODULE
+	unsigned int    skc_hwdpi_mark;
+    #endif
 };
 
 struct cg_proto;
@@ -354,6 +357,8 @@ struct sock {
 #define sk_incoming_cpu		__sk_common.skc_incoming_cpu
 #define sk_flags		__sk_common.skc_flags
 #define sk_rxhash		__sk_common.skc_rxhash
+#define sk_hwdpi_mark   __sk_common.skc_hwdpi_mark
+
 
 	socket_lock_t		sk_lock;
 	struct sk_buff_head	sk_receive_queue;
@@ -387,6 +392,10 @@ struct sock {
 		struct socket_wq __rcu	*sk_wq;
 		struct socket_wq	*sk_wq_raw;
 	};
+#ifdef CONFIG_HW_WIFIPRO
+	int wifipro_is_google_sock;
+	char wifipro_dev_name[IFNAMSIZ];
+#endif
 #ifdef CONFIG_XFRM
 	struct xfrm_policy __rcu *sk_policy[2];
 #endif

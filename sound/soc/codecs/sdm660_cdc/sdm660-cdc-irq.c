@@ -29,10 +29,13 @@
 #include "msm-analog-cdc.h"
 #include "sdm660-cdc-irq.h"
 #include "sdm660-cdc-registers.h"
+#ifdef CONFIG_HUAWEI_DSM_AUDIO
+#include <dsm_audio/dsm_audio.h>
+#endif
 
 #define MAX_NUM_IRQS 14
 #define NUM_IRQ_REGS 2
-#define WCD9XXX_SYSTEM_RESUME_TIMEOUT_MS 700
+#define WCD9XXX_SYSTEM_RESUME_TIMEOUT_MS 5000
 
 #define BYTE_BIT_MASK(nr) (1UL << ((nr) % BITS_PER_BYTE))
 #define BIT_BYTE(nr) ((nr) / BITS_PER_BYTE)
@@ -96,6 +99,7 @@ struct wcd9xxx_spmi_map {
 };
 
 struct wcd9xxx_spmi_map map;
+static bool mbhc_sw_flag;
 
 void wcd9xxx_spmi_enable_irq(int irq)
 {
@@ -179,22 +183,21 @@ static int get_irq_bit(int linux_irq)
 	return i;
 }
 
-static int get_order_irq(int  i)
-{
-	return order[i];
-}
-
 static irqreturn_t wcd9xxx_spmi_irq_handler(int linux_irq, void *data)
 {
-	int irq, i, j;
+	int irq, i;
 	unsigned long status[NUM_IRQ_REGS] = {0};
 
+	irq = get_irq_bit(linux_irq);
+	mbhc_sw_flag = false;
+	if (MSM89XX_IRQ_MBHC_HS_DET == irq)
+		mbhc_sw_flag = true;
+
 	if (unlikely(wcd9xxx_spmi_lock_sleep() == false)) {
-		pr_err("Failed to hold suspend\n");
+		pr_err("Failed to hold suspend swflag=%d\n", mbhc_sw_flag);
 		return IRQ_NONE;
 	}
 
-	irq = get_irq_bit(linux_irq);
 	if (irq == MAX_NUM_IRQS)
 		return IRQ_HANDLED;
 
@@ -205,16 +208,8 @@ static irqreturn_t wcd9xxx_spmi_irq_handler(int linux_irq, void *data)
 			MSM89XX_PMIC_DIGITAL_INT_LATCHED_STS);
 		status[i] &= ~map.mask[i];
 	}
-	for (i = 0; i < MAX_NUM_IRQS; i++) {
-		j = get_order_irq(i);
-		if ((status[BIT_BYTE(j)] & BYTE_BIT_MASK(j)) &&
-			((map.handled[BIT_BYTE(j)] &
-			BYTE_BIT_MASK(j)) == 0)) {
-			map.handler[j](irq, data);
-			map.handled[BIT_BYTE(j)] |=
-					BYTE_BIT_MASK(j);
-		}
-	}
+
+	map.handler[irq](irq, data);
 	map.handled[BIT_BYTE(irq)] &= ~BYTE_BIT_MASK(irq);
 	wcd9xxx_spmi_unlock_sleep();
 
@@ -348,6 +343,13 @@ bool wcd9xxx_spmi_lock_sleep(void)
 			__func__,
 			WCD9XXX_SYSTEM_RESUME_TIMEOUT_MS, map.pm_state,
 			map.wlock_holders);
+			if (mbhc_sw_flag) {
+#ifdef CONFIG_HUAWEI_DSM_AUDIO
+				audio_dsm_report_info(AUDIO_CODEC, DSM_AUDIO_CODEC_RESUME_FAIL_ERROR,
+					 "%s pm_state = %d, wlock_holders = %d\n",
+					 __func__, map.pm_state, map.wlock_holders);
+#endif
+			}
 		wcd9xxx_spmi_unlock_sleep();
 		return false;
 	}

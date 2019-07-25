@@ -26,12 +26,15 @@ struct plt_entry {
 	__le32	br;	/* br	x16				*/
 };
 
+static struct plt_entry *plts_addr;
+
 u64 module_emit_plt_entry(struct module *mod, const Elf64_Rela *rela,
 			  Elf64_Sym *sym)
 {
 	struct plt_entry *plt = (struct plt_entry *)mod->arch.plt->sh_addr;
 	int i = mod->arch.plt_num_entries;
 	u64 val = sym->st_value + rela->r_addend;
+	plts_addr = plt;
 
 	/*
 	 * We only emit PLT entries against undefined (SHN_UNDEF) symbols,
@@ -191,6 +194,18 @@ int module_frob_arch_sections(Elf_Ehdr *ehdr, Elf_Shdr *sechdrs,
 		plt_max_entries += count_plts(syms, rels, numrels);
 	}
 
+#ifdef CONFIG_LIVEPATCH
+	for (i = 0; i < ehdr->e_shnum; i++) {
+		if (!strcmp(".livepatch.pltcount", secstrings + sechdrs[i].sh_name)) {
+			plt_max_entries += sechdrs[i].sh_size;
+			sechdrs[i].sh_size = 0;
+			sechdrs[i].sh_type = SHT_NOBITS;
+			sechdrs[i].sh_flags = 0;
+			break;
+		}
+	}
+#endif
+
 	mod->arch.plt->sh_type = SHT_NOBITS;
 	mod->arch.plt->sh_flags = SHF_EXECINSTR | SHF_ALLOC;
 	mod->arch.plt->sh_addralign = L1_CACHE_BYTES;
@@ -198,4 +213,22 @@ int module_frob_arch_sections(Elf_Ehdr *ehdr, Elf_Shdr *sechdrs,
 	mod->arch.plt_num_entries = 0;
 	mod->arch.plt_max_entries = plt_max_entries;
 	return 0;
+}
+
+u64 livepatch_emit_plt_entry(struct module *mod, unsigned long val)
+{
+	struct plt_entry *plt = plts_addr;
+	int i = mod->arch.plt_num_entries;
+
+	mod->arch.plt_num_entries++;
+	BUG_ON(mod->arch.plt_num_entries > mod->arch.plt_max_entries);
+
+	plt[i] = (struct plt_entry){
+			cpu_to_le32(0x92800010 | (((~val      ) & 0xffff)) << 5),
+			cpu_to_le32(0xf2a00010 | ((( val >> 16) & 0xffff)) << 5),
+			cpu_to_le32(0xf2c00010 | ((( val >> 32) & 0xffff)) << 5),
+			cpu_to_le32(0xd61f0200)
+	};
+
+	return (u64)&plt[i];
 }

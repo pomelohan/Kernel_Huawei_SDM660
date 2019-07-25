@@ -62,6 +62,7 @@
 #include <linux/dma-debug.h>
 #include <linux/debugfs.h>
 #include <linux/userfaultfd_k.h>
+#include <linux/mm_inline.h>
 
 #include <asm/io.h>
 #include <asm/pgalloc.h>
@@ -71,6 +72,10 @@
 #include <asm/pgtable.h>
 
 #include "internal.h"
+
+#ifdef CONFIG_HW_MEMORY_MONITOR
+#include <chipset_common/mmonitor/mmonitor.h>
+#endif
 
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
 #warning Unfortunate NUMA and NUMA Balancing config, growing page-frame for last_cpupid.
@@ -2304,6 +2309,26 @@ static int wp_page_shared(struct mm_struct *mm, struct vm_area_struct *vma,
 			     orig_pte, old_page, page_mkwrite, 1);
 }
 
+#ifdef CONFIG_NON_SWAP
+static void
+clear_page_non_swap(struct page *page)
+{
+	struct zone *zone;
+	struct lruvec *lruvec;
+
+	if (!PageLRU(page) || !page_evictable(page))
+		return;
+	zone = page_zone(page);
+	spin_lock_irq(&zone->lru_lock);
+	__dec_zone_page_state(page, NR_NON_SWAP);
+	//lruvec = mem_cgroup_page_lruvec(page, zone->zone_pgdat);
+	lruvec = mem_cgroup_page_lruvec(page, zone);
+	del_page_from_lru_list(page, lruvec, LRU_UNEVICTABLE);
+	add_page_to_lru_list(page, lruvec, page_lru(page));
+	spin_unlock_irq(&zone->lru_lock);
+}
+#endif
+
 /*
  * This routine handles present pages, when users try to write
  * to a shared page. It is done by copying the page to a new address
@@ -2368,6 +2393,10 @@ static int do_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 			page_cache_release(old_page);
 		}
 		if (reuse_swap_page(old_page)) {
+#ifdef CONFIG_NON_SWAP
+			if (unlikely(TestClearPageNonSwap(old_page)))
+				clear_page_non_swap(old_page);
+#endif
 			/*
 			 * The page is all ours.  Move it to our anon_vma so
 			 * the rmap code will not search our parent or siblings.
@@ -2512,6 +2541,11 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		goto out;
 	}
 	delayacct_set_flag(DELAYACCT_PF_SWAPIN);
+#ifdef CONFIG_HW_MEMORY_MONITOR
+	if (current->delays)
+		__delayacct_blkio_start();
+	count_mmonitor_event(FILE_CACHE_MAP_COUNT);
+#endif
 	page = lookup_swap_cache(entry);
 	if (!page) {
 		page = swapin_readahead(entry,
@@ -2524,6 +2558,10 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 			page_table = pte_offset_map_lock(mm, pmd, address, &ptl);
 			if (likely(pte_same(*page_table, orig_pte)))
 				ret = VM_FAULT_OOM;
+#ifdef CONFIG_HW_MEMORY_MONITOR
+			if (current->delays)
+				__delayacct_blkio_end();
+#endif
 			delayacct_clear_flag(DELAYACCT_PF_SWAPIN);
 			goto unlock;
 		}
@@ -2538,6 +2576,10 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		 * owner processes (which may be unknown at hwpoison time)
 		 */
 		ret = VM_FAULT_HWPOISON;
+#ifdef CONFIG_HW_MEMORY_MONITOR
+		if (current->delays)
+			__delayacct_blkio_end();
+#endif
 		delayacct_clear_flag(DELAYACCT_PF_SWAPIN);
 		swapcache = page;
 		goto out_release;
@@ -2545,12 +2587,20 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 
 	swapcache = page;
 	locked = lock_page_or_retry(page, mm, flags);
-
+#ifdef CONFIG_HW_MEMORY_MONITOR
+	if (current->delays)
+		__delayacct_blkio_end();
+#endif
 	delayacct_clear_flag(DELAYACCT_PF_SWAPIN);
 	if (!locked) {
 		ret |= VM_FAULT_RETRY;
 		goto out_release;
 	}
+
+#ifdef CONFIG_NON_SWAP
+	if ((flags & FAULT_FLAG_WRITE) && unlikely(TestClearPageNonSwap(page)))
+		clear_page_non_swap(page);
+#endif
 
 	/*
 	 * Make sure try_to_free_swap or reuse_swap_page or swapoff did not
@@ -2607,6 +2657,11 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	flush_icache_page(vma, page);
 	if (pte_swp_soft_dirty(orig_pte))
 		pte = pte_mksoft_dirty(pte);
+
+#ifdef CONFIG_NON_SWAP
+	if (!(flags & FAULT_FLAG_WRITE) && PageNonSwap(page))
+		pte = pte_wrprotect(pte);
+#endif
 	set_pte_at(mm, address, page_table, pte);
 	if (page == swapcache) {
 		do_page_add_anon_rmap(page, vma, address, exclusive);
@@ -3909,4 +3964,8 @@ void ptlock_free(struct page *page)
 {
 	kmem_cache_free(page_ptl_cachep, page->ptl);
 }
+#endif
+
+#ifdef CONFIG_HUAWEI_BOOST_SIGKILL_FREE
+#include "boost_sigkill_free.c"
 #endif

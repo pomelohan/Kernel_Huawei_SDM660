@@ -215,6 +215,7 @@ struct sdm660_cdc_priv {
 	/* Entry for version info */
 	struct snd_info_entry *entry;
 	struct snd_info_entry *version_entry;
+	struct regulator *bob_mode_switch;
 };
 
 struct sdm660_cdc_pdata {

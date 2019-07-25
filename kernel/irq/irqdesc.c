@@ -18,6 +18,9 @@
 
 #include "internals.h"
 
+#ifdef CONFIG_SRECORDER
+#include <linux/srecorder.h>
+#endif
 /*
  * lockdep: we want to handle all irq_desc locks as a single lock-class:
  */
@@ -369,6 +372,12 @@ int __handle_domain_irq(struct irq_domain *domain, unsigned int hwirq,
 	unsigned int irq = hwirq;
 	int ret = 0;
 
+ #ifdef CONFIG_MINIDUMP_TRACE_INFO
+ #ifdef CONFIG_SRECORDER
+ 	minidump_irq_trace_write(0, hwirq);
+ #endif
+ #endif
+
 	irq_enter();
 
 #ifdef CONFIG_IRQ_DOMAIN
@@ -388,6 +397,11 @@ int __handle_domain_irq(struct irq_domain *domain, unsigned int hwirq,
 	}
 
 	irq_exit();
+#ifdef CONFIG_MINIDUMP_TRACE_INFO
+#ifdef CONFIG_SRECORDER
+	minidump_irq_trace_write(1, hwirq);
+#endif
+#endif
 	set_irq_regs(old_regs);
 	return ret;
 }

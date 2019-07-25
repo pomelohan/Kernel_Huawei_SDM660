@@ -7380,6 +7380,13 @@ EXPORT_SYMBOL(unregister_netdevice_many);
 void unregister_netdev(struct net_device *dev)
 {
 	rtnl_lock();
+#ifdef CONFIG_HUAWEI_WIFI
+	if(dev) {
+		if(!strcmp(dev->name,"wlan0") || !strcmp(dev->name,"p2p")) {
+			pr_err("%s() dev->name: %s\n",__func__, dev->name);
+		}
+	}
+#endif
 	unregister_netdevice(dev);
 	rtnl_unlock();
 }

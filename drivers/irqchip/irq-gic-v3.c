@@ -38,6 +38,9 @@
 
 #include "irq-gic-common.h"
 
+#ifdef CONFIG_HUAWEI_DUBAI
+#include <huawei_platform/log/hwlog_kernel.h>
+#endif
 struct redist_region {
 	void __iomem		*redist_base;
 	phys_addr_t		phys_base;
@@ -443,6 +446,9 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 			name = desc->action->name;
 
 		pr_warn("%s: %d triggered %s\n", __func__, irq, name);
+#ifdef CONFIG_HUAWEI_DUBAI
+                HWDUBAI_LOGE("DUBAI_TAG_AP_WAKE_IRQ", "name=%s", name);
+#endif
 	}
 }
 

@@ -1,0 +1,101 @@
+/*=============================================================================
+                           Huawei Base Dtsi File
+  GENERAL DESCRIPTION
+    This file is for include the Communal node
+
+  Copyright 2010-2014 by HUAWEI Technologies, Inc.  All Rights Reserved.
+=============================================================================*/
+
+
+#include "sdm636.dtsi"
+#include "sdm636-qrd.dtsi"
+#include "sdm660-internal-codec.dtsi"
+
+&int_codec {
+	qcom,model = "sdm660-snd-card-mtp";
+};
+&msm_sdw_codec {
+	status = "disabled";
+};
+/{
+    huawei_charger: qcom,huawei_charger{
+        compatible = "huawei,charger";
+        status = "okay";
+        powerdown_anim_horizontal = "1";
+		huawei,allow_converse;
+
+    };
+};
+&tlmm {
+	usb_short_curcuit_default: usb_short_curcuit_default {
+			mux {
+				pins = "gpio31";
+				function =  "gpio";
+			};
+			config {
+				pins = "gpio31";
+				drive-strength = <2>;
+				bias-disable;
+		};
+	};
+};
+/{
+    usb_short_circuit_protect: usb_short_circuit_protect{
+                compatible = "huawei,usb_short_circuit_protect";
+		pinctrl-names = "default";
+		pinctrl-0 = <&usb_short_curcuit_default>;
+		gpio_usb_short_circuit_protect = <&tlmm 31 0x00>;
+		qcom,uscp-vadc = <&hw_uscp_adc>;
+                no_need_uscp = <1>;
+		dmd_hiz_enable = <1>;
+		type_delay_time = <3000>;
+                uscp_threshold_tusb = <40>;
+		open_mosfet_temp = <19>;
+		close_mosfet_temp = <8>;
+		open_hiz_temp = <13>;
+		interval_switch_temp = <7>;
+                status = "ok";
+        };
+};
+
+/{
+    huawei_fuelguage: qcom,huawei_fuelguage{
+        compatible = "huawei,fuelguage";
+        fuelguage_type = "bms";
+        status = "okay";
+    };
+};
+/ {
+	huawei_otg_dual_role:huawei_otg_dual_role{
+		compatible = "huawei,otg-dual-role";
+		status = "okay";
+	};
+};
+&spmi_bus {
+	qcom,pm660@0 {
+
+			huawei_battery: huawei_battery {
+				compatible = "huawei,battery";
+				status = "disabled";
+		 };
+    hw_uscp_adc: hw_uscp_adc {
+        compatible="huawei-vadc";
+        vadc-name="uscp";
+        qcom,uscp-vadc=<&pm660_vadc>;
+        channel = <0x50>;
+        status="okay";
+    };
+    huawei_otg_adc: huawei_otg_adc {
+        compatible="huawei-vadc";
+        vadc-name="otg";
+        qcom,otg-vadc=<&pm660_vadc>;
+        channel = <0x4E>;
+        status="disabled";
+    };
+	};
+};
+
+&pmic_analog_codec {
+    bob-work-mode-supply = <&pm660l_bob>;
+};
+

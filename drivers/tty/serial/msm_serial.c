@@ -39,7 +39,9 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/wait.h>
-
+#ifdef CONFIG_SERIAL_MSM_CONSOLE
+#include "serial_log_switch/serial_log_switch.h"
+#endif
 #define UART_MR1			0x0000
 
 #define UART_MR1_AUTO_RFR_LEVEL0	0x3F
@@ -1785,6 +1787,14 @@ static int msm_serial_probe(struct platform_device *pdev)
 		return -ENXIO;
 
 	dev_info(&pdev->dev, "msm_serial: detected port #%d\n", line);
+
+#ifdef CONFIG_SERIAL_MSM_CONSOLE
+	/* Port 0(uart 2) used for console. */
+	if (!is_serial_log_enabled() && 0 == line) {
+		pr_info("serial console disabled, do not register ttyMSM0.\n");
+		return -ENODEV;
+	}
+#endif
 
 	port = msm_get_port_from_line(line);
 	port->dev = &pdev->dev;

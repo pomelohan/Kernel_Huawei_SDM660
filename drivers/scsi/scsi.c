@@ -618,6 +618,10 @@ int scsi_change_queue_depth(struct scsi_device *sdev, int depth)
 {
 	if (depth > 0) {
 		sdev->queue_depth = depth;
+		if (sdev->request_queue)
+			/*lint -save -e732*/
+			blk_set_queue_depth(sdev->request_queue, depth);
+			/*lint -restore*/
 		wmb();
 	}
 

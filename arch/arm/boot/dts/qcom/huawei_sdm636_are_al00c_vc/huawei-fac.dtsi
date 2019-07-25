@@ -1,0 +1,9 @@
+/{
+		huawei_fac_info {
+		compatible = "huawei,hw_fac_info";
+		fac,product_name = "ARE-AL00";
+		fac,hardware_ver = "HL1AREM";
+		fac,software_ver = "ARE_AL00C_VC";
+		status = "ok";
+	};
+};

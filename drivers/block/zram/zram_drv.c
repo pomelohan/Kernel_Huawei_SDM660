@@ -718,6 +718,13 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 		pr_err("Compression failed! err=%d\n", ret);
 		goto out;
 	}
+#ifdef CONFIG_ZRAM_NON_SWAP
+	if (!is_partial_io(bvec) && zram->non_swap && clen > zram->non_swap) {
+		ret = 0;
+		SetPageNonSwap(page);
+		goto out;
+	}
+#endif
 	src = zstrm->buffer;
 	if (unlikely(clen > max_zpage_size)) {
 		clen = PAGE_SIZE;
@@ -997,7 +1004,9 @@ static void zram_reset_device(struct zram *zram)
 	down_write(&zram->init_lock);
 
 	zram->limit_pages = 0;
-
+#ifdef CONFIG_ZRAM_NON_SWAP
+	zram->non_swap = 2048;
+#endif
 	if (!init_done(zram)) {
 		up_write(&zram->init_lock);
 		return;
@@ -1157,6 +1166,31 @@ static const struct block_device_operations zram_devops = {
 	.owner = THIS_MODULE
 };
 
+#ifdef CONFIG_ZRAM_NON_SWAP
+static ssize_t non_swap_show(struct device *dev,
+			     struct device_attribute *attr, char *buf)
+{
+	struct zram *zram = dev_to_zram(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n", zram->non_swap);
+}
+
+static ssize_t non_swap_store(struct device *dev,
+			      struct device_attribute *attr, const char *buf,
+			      size_t len)
+{
+	struct zram *zram = dev_to_zram(dev);
+
+	zram->non_swap = (unsigned int)memparse(buf, NULL);
+
+	if (zram->non_swap > max_zpage_size)
+		pr_warn("Nonswap should small than max_zpage_size %zu\n",
+			max_zpage_size);
+
+	return len;
+}
+#endif
+
 static DEVICE_ATTR_WO(compact);
 static DEVICE_ATTR_RW(disksize);
 static DEVICE_ATTR_RO(initstate);
@@ -1167,6 +1201,10 @@ static DEVICE_ATTR_RW(mem_limit);
 static DEVICE_ATTR_RW(mem_used_max);
 static DEVICE_ATTR_RW(max_comp_streams);
 static DEVICE_ATTR_RW(comp_algorithm);
+
+#ifdef CONFIG_ZRAM_NON_SWAP
+static DEVICE_ATTR_RW(non_swap);
+#endif
 
 static struct attribute *zram_disk_attrs[] = {
 	&dev_attr_disksize.attr,
@@ -1187,6 +1225,9 @@ static struct attribute *zram_disk_attrs[] = {
 	&dev_attr_mem_used_max.attr,
 	&dev_attr_max_comp_streams.attr,
 	&dev_attr_comp_algorithm.attr,
+#ifdef CONFIG_ZRAM_NON_SWAP
+	&dev_attr_non_swap.attr,
+#endif
 	&dev_attr_io_stat.attr,
 	&dev_attr_mm_stat.attr,
 	NULL,

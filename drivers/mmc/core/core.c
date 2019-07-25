@@ -34,6 +34,11 @@
 #include <linux/jiffies.h>
 
 #define CREATE_TRACE_POINTS
+
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+#include <linux/wakelock.h>
+#endif
+
 #include <trace/events/mmc.h>
 
 #include <linux/mmc/card.h>
@@ -51,12 +56,23 @@
 #include "mmc_ops.h"
 #include "sd_ops.h"
 #include "sdio_ops.h"
+#include "rwlog.h"
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(mmc_blk_erase_start);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mmc_blk_erase_end);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mmc_blk_rw_start);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mmc_blk_rw_end);
 
+#ifdef CONFIG_HUAWEI_SDCARD_DSM
+#include <linux/mmc/dsm_sdcard.h>
+#include "../card/queue.h"
+#endif
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+#include <linux/mmc/dsm_emmc.h>
+#endif
+#ifdef CONFIG_HUAWEI_BFM
+#include <chipset_common/bfmr/bfm/chipsets/qcom/bfm_qcom.h>
+#endif
 /* If the device is not responding */
 #define MMC_CORE_TIMEOUT_MS	(10 * 60 * 1000) /* 10 minute timeout */
 
@@ -65,6 +81,11 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(mmc_blk_rw_end);
  * operations the card has to perform.
  */
 #define MMC_BKOPS_MAX_TIMEOUT	(4 * 60 * 1000) /* max time to wait in ms */
+
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+#define MAX_ACMD41_RETRY_TIMES	5
+static struct wake_lock mmc_delayed_work_wake_lock;
+#endif
 
 static struct workqueue_struct *workqueue;
 static const unsigned freqs[] = { 400000, 300000, 200000, 100000 };
@@ -1160,8 +1181,17 @@ static int mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 	led_trigger_event(host->led, LED_FULL);
 
 	if (mmc_is_data_request(mrq)) {
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		if(host->mmc_enter_ioctl_multi_cmd) {
+			pr_err("ioctl_multi_cmd, skip the mmc_deferred_scaling.\n");
+		} else {
+			mmc_deferred_scaling(host);
+			mmc_clk_scaling_start_busy(host, true);
+		}
+#else
 		mmc_deferred_scaling(host);
 		mmc_clk_scaling_start_busy(host, true);
+#endif
 	}
 
 	__mmc_start_request(host, mrq);
@@ -1535,7 +1565,9 @@ static void mmc_wait_for_req_done(struct mmc_host *host,
 		wait_for_completion_io(&mrq->completion);
 
 		cmd = mrq->cmd;
-
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+		emmc_sync_resp_err_dsm(host, mrq, mmc_wait_data_done);
+#endif
 		/*
 		 * If host has timed out waiting for the sanitize/bkops
 		 * to complete, card might be still in programming state
@@ -1798,6 +1830,9 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 		}
 	}
 
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+	emmc_async_resp_err_dsm(host, mmc_wait_data_done);
+#endif
 	if (!err && areq) {
 #ifdef CONFIG_BLOCK
 		if (host->latency_hist_enabled) {
@@ -1841,8 +1876,12 @@ EXPORT_SYMBOL(mmc_start_req);
 void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
 {
 #ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
-	if (mmc_bus_needs_resume(host))
+	if (mmc_bus_needs_resume(host)) {
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		pr_err("[Deferred_resume] %s:Start to resume the sdcard\n", __func__);
+#endif
 		mmc_resume_bus(host);
+	}
 #endif
 	__mmc_start_req(host, mrq);
 	mmc_wait_for_req_done(host, mrq);
@@ -2969,7 +3008,15 @@ int mmc_set_signal_voltage(struct mmc_host *host, int signal_voltage, u32 ocr)
 	mmc_host_clk_hold(host);
 	err = mmc_wait_for_cmd(host, &cmd, 0);
 	if (err)
+	{
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		if(host && (!strcmp(mmc_hostname(host),"mmc1")))
+		{
+			pr_err("%s: send cmd11 fail, err=%d\n", mmc_hostname(host), err);
+		}
+#endif
 		goto err_command;
+	}
 
 	if (!mmc_host_is_spi(host) && (cmd.resp[0] & R1_ERROR)) {
 		err = -EIO;
@@ -3022,11 +3069,26 @@ int mmc_set_signal_voltage(struct mmc_host *host, int signal_voltage, u32 ocr)
 		err = -EAGAIN;
 
 power_cycle:
+#ifdef CONFIG_HUAWEI_QCOM_MMC
 	if (err) {
+		pr_info("%s: Signal voltage switch failed, "
+			"power cycling card\n", mmc_hostname(host));
+		mmc_power_cycle(host, ocr);
+	}
+	else
+	{
+		if(host && (!strcmp(mmc_hostname(host),"mmc1")))
+			pr_info("%s: host and card voltage have changed into 1.8v success!\n", mmc_hostname(host));
+	}
+
+#else
+	if (err) {
+
 		pr_debug("%s: Signal voltage switch failed, "
 			"power cycling card\n", mmc_hostname(host));
 		mmc_power_cycle(host, ocr);
 	}
+#endif
 
 err_command:
 	mmc_host_clk_release(host);
@@ -3131,8 +3193,16 @@ void mmc_power_up(struct mmc_host *host, u32 ocr)
 	 * This delay should be sufficient to allow the power supply
 	 * to reach the minimum voltage.
 	 */
-	mmc_delay(10);
-
+	/*For sdcard we increase delay to 150ms to give rpm more time to operate.*/
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	if(!strcmp(mmc_hostname(host), "mmc1")) {
+		mmc_delay(150);
+	}
+	else
+#endif 
+	{
+		mmc_delay(10);
+	}
 	mmc_pwrseq_post_power_on(host);
 
 	host->ios.clock = host->f_init;
@@ -3230,7 +3300,7 @@ int mmc_resume_bus(struct mmc_host *host)
 	if (!mmc_bus_needs_resume(host))
 		return -EINVAL;
 
-	pr_debug("%s: Starting deferred resume\n", mmc_hostname(host));
+	pr_err("%s: [Deferred_resume] Starting deferred resume\n", mmc_hostname(host));
 	spin_lock_irqsave(&host->lock, flags);
 	host->bus_resume_flags &= ~MMC_BUSRESUME_NEEDS_RESUME;
 	spin_unlock_irqrestore(&host->lock, flags);
@@ -3251,7 +3321,7 @@ int mmc_resume_bus(struct mmc_host *host)
 	}
 
 	mmc_bus_put(host);
-	pr_debug("%s: Deferred resume completed\n", mmc_hostname(host));
+	pr_err("%s: [Deferred_resume] Deferred resume completed\n", mmc_hostname(host));
 	return 0;
 }
 EXPORT_SYMBOL(mmc_resume_bus);
@@ -3694,9 +3764,13 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 		/* Do not retry else we can't see errors */
 		err = mmc_wait_for_cmd(card->host, &cmd, 0);
 		if (err || (cmd.resp[0] & 0xFDF92000)) {
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+			emmc_erase_err_dsm(card, &cmd, err);
+#else
 			pr_err("error %d requesting status %#x\n",
 				err, cmd.resp[0]);
 			err = -EIO;
+#endif
 			goto out;
 		}
 
@@ -3992,6 +4066,13 @@ unsigned int mmc_calc_max_discard(struct mmc_card *card)
 		max_trim = mmc_do_calc_max_discard(card, MMC_TRIM_ARG);
 		if (max_trim < max_discard)
 			max_discard = max_trim;
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		//Micron eMMC use the ECSD[232] for max_discard calculation.
+		if(mmc_can_discard(card) && card->cid.manfid == CID_MANFID_MICRON)
+		{
+			max_discard = max_trim;
+		}
+#endif
 	} else if (max_discard < card->erase_size) {
 		max_discard = 0;
 	}
@@ -4108,8 +4189,18 @@ static int mmc_rescan_try_freq(struct mmc_host *host, unsigned freq)
 		return 0;
 	if (!mmc_attach_sd(host))
 		return 0;
+#ifdef CONFIG_HUAWEI_BFM
+	if (!mmc_attach_mmc(host) && !check_bootfail_inject(KERNEL_EMMC_INIT_FAIL))
+		return 0;
+	else if (host->caps & MMC_CAP_NONREMOVABLE)
+	{
+		qcom_set_boot_fail_flag(KERNEL_EMMC_INIT_FAIL);
+		panic("Boot_monitor detect error:KERNEL_EMMC_INIT_FAI\n");
+	}
+#else
 	if (!mmc_attach_mmc(host))
 		return 0;
+#endif
 
 	mmc_power_off(host);
 	return -EIO;
@@ -4118,6 +4209,10 @@ static int mmc_rescan_try_freq(struct mmc_host *host, unsigned freq)
 int _mmc_detect_card_removed(struct mmc_host *host)
 {
 	int ret;
+
+#ifdef CONFIG_HUAWEI_SDCARD_DSM
+	sdcard_dsm_cmd_logs_clear(host);
+#endif
 
 	if (host->caps & MMC_CAP_NONREMOVABLE)
 		return 0;
@@ -4209,6 +4304,12 @@ void mmc_rescan(struct work_struct *work)
 	struct mmc_host *host =
 		container_of(work, struct mmc_host, detect.work);
 
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	if (!strcmp(mmc_hostname(host), "mmc1"))
+	{
+		pr_info("%s:mmc_rescan++\n",mmc_hostname(host));
+	}
+#endif
 	if (host->trigger_card_event && host->ops->card_event) {
 		host->ops->card_event(host);
 		host->trigger_card_event = false;
@@ -4217,6 +4318,13 @@ void mmc_rescan(struct work_struct *work)
 	spin_lock_irqsave(&host->lock, flags);
 	if (host->rescan_disable) {
 		spin_unlock_irqrestore(&host->lock, flags);
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		if (!strcmp(mmc_hostname(host), "mmc1"))
+		{
+			pr_info("%s:%s:rescan_disable is true,so exit\n",mmc_hostname(host),__func__);
+			pr_info("%s:mmc_rescan--\n",mmc_hostname(host));
+		}
+#endif
 		return;
 	}
 	spin_unlock_irqrestore(&host->lock, flags);
@@ -4226,6 +4334,20 @@ void mmc_rescan(struct work_struct *work)
 		return;
 	host->rescan_entered = 1;
 
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	if((!(host->caps & MMC_CAP_NONREMOVABLE)) && !(host->change_slot)&& !(host->sd_present))
+	{
+		pr_err("%s %d host->sd_init_retry_cnt = %d  host->change_slot =%d  host->sd_present = %d and return \n",
+			__func__,__LINE__, host->sd_init_retry_cnt, host->change_slot, host->sd_present);
+		pr_err("%s:mmc_rescan--\n",mmc_hostname(host));
+		return ;
+	}
+	if((!(host->caps & MMC_CAP_NONREMOVABLE)) && (host->sd_acmd41_timeout_cnt >= MAX_ACMD41_RETRY_TIMES)) {
+		pr_err("%s, this card stuck in acmd41 too many times, skip rescan for this card.", mmc_hostname(host));
+		pr_info("%s:mmc_rescan--\n",mmc_hostname(host));
+		return;
+	}
+#endif
 	mmc_bus_get(host);
 
 	/*
@@ -4234,7 +4356,15 @@ void mmc_rescan(struct work_struct *work)
 	 */
 	if (host->bus_ops && !host->bus_dead
 	    && !(host->caps & MMC_CAP_NONREMOVABLE))
+	{
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		wake_lock_timeout(&mmc_delayed_work_wake_lock, (5*HZ));
+#endif
 		host->bus_ops->detect(host);
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		wake_unlock(&mmc_delayed_work_wake_lock);
+#endif
+	}
 
 	host->detect_change = 0;
 	if (host->ignore_bus_resume_flags)
@@ -4261,10 +4391,21 @@ void mmc_rescan(struct work_struct *work)
 
 	if (!(host->caps & MMC_CAP_NONREMOVABLE) && host->ops->get_cd &&
 			host->ops->get_cd(host) == 0) {
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		if (!strcmp(mmc_hostname(host), "mmc1"))
+		{
+			pr_info("%s:%s:host->ops->get_cd(host) == 0, maybe the sdcard is not present, so exit\n",mmc_hostname(host),__func__);
+		}
+#endif
 		mmc_claim_host(host);
 		mmc_power_off(host);
 		mmc_release_host(host);
 		goto out;
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	} else{
+		if (!strcmp(mmc_hostname(host), "mmc1"))
+			printk("%s:%d sdcard is present, prepare to init sdcard  \n",__func__, __LINE__);
+#endif
 	}
 
 	mmc_claim_host(host);
@@ -4274,6 +4415,12 @@ void mmc_rescan(struct work_struct *work)
  out:
 	if (host->caps & MMC_CAP_NEEDS_POLL)
 		mmc_schedule_delayed_work(&host->detect, HZ);
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	if (!strcmp(mmc_hostname(host), "mmc1"))
+	{
+		pr_info("%s:mmc_rescan--\n",mmc_hostname(host));
+	}
+#endif
 }
 
 void mmc_start_host(struct mmc_host *host)
@@ -4290,7 +4437,13 @@ void mmc_start_host(struct mmc_host *host)
 
 	mmc_gpiod_request_cd_irq(host);
 	mmc_release_host(host);
-	_mmc_detect_change(host, 0, false);
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	//delay 15ms for pltfm_init_done=true in sdhci_msm_probe
+	if (!strcmp(mmc_hostname(host), "mmc1"))
+		_mmc_detect_change(host, 15, false);
+	else
+#endif
+		_mmc_detect_change(host, 0, false);
 }
 
 void mmc_stop_host(struct mmc_host *host)
@@ -4431,15 +4584,24 @@ int mmc_flush_cache(struct mmc_card *card)
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				EXT_CSD_FLUSH_CACHE, 1, 0);
 		if (err == -ETIMEDOUT) {
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+			cache_flush_timeout_dsm(card);
+#endif
 			pr_err("%s: cache flush timeout\n",
 					mmc_hostname(card->host));
 			err = mmc_interrupt_hpi(card);
 			if (err) {
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+				mmc_interrupt_hpi_failed_dsm(card, err);
+#endif
 				pr_err("%s: mmc_interrupt_hpi() failed (%d)\n",
 						mmc_hostname(card->host), err);
 				err = -ENODEV;
 			}
 		} else if (err) {
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+			cache_flush_err_dsm(card, err);
+#endif
 			pr_err("%s: cache flush error %d\n",
 					mmc_hostname(card->host), err);
 		}
@@ -4470,6 +4632,16 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 		spin_lock_irqsave(&host->lock, flags);
 		host->rescan_disable = 1;
 		spin_unlock_irqrestore(&host->lock, flags);
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		if (!strcmp(mmc_hostname(host), "mmc1") && !(host->caps & MMC_CAP_NONREMOVABLE))
+		{
+			if(host->sd_init_retry_cnt >= 5)
+			{
+				host->change_slot = 0;
+			}
+			pr_err("%s %d host->sd_init_retry_cnt = %d  host->change_slot =%d \n",__func__,__LINE__,host->sd_init_retry_cnt,host->change_slot);
+		}
+#endif
 		cancel_delayed_work_sync(&host->detect);
 
 		if (!host->bus_ops)
@@ -4551,6 +4723,11 @@ static int __init mmc_init(void)
 	if (!workqueue)
 		return -ENOMEM;
 
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	wake_lock_init(&mmc_delayed_work_wake_lock, WAKE_LOCK_SUSPEND,
+	    "mmc_delayed_work");
+#endif
+
 	ret = mmc_register_bus();
 	if (ret)
 		goto destroy_workqueue;
@@ -4562,6 +4739,7 @@ static int __init mmc_init(void)
 	ret = sdio_register_bus();
 	if (ret)
 		goto unregister_host_class;
+	rwlog_init();
 
 	return 0;
 
@@ -4571,7 +4749,9 @@ unregister_bus:
 	mmc_unregister_bus();
 destroy_workqueue:
 	destroy_workqueue(workqueue);
-
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	wake_lock_destroy(&mmc_delayed_work_wake_lock);
+#endif
 	return ret;
 }
 
@@ -4581,6 +4761,9 @@ static void __exit mmc_exit(void)
 	mmc_unregister_host_class();
 	mmc_unregister_bus();
 	destroy_workqueue(workqueue);
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	wake_lock_destroy(&mmc_delayed_work_wake_lock);
+#endif
 }
 
 #ifdef CONFIG_BLOCK

@@ -500,6 +500,13 @@ struct mmc_host {
 	unsigned int		retune_period;	/* re-tuning period in secs */
 	struct timer_list	retune_timer;	/* for periodic re-tuning */
 
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	unsigned int         change_slot;/*sd slot change*/
+	unsigned int         sd_init_retry_cnt;
+	unsigned int         sd_present;
+	unsigned int         sd_acmd41_timeout_cnt;
+	unsigned int         mmc_enter_ioctl_multi_cmd;
+#endif
 	bool			trigger_card_event; /* card_event necessary */
 
 	struct mmc_card		*card;		/* device attached to this host */
@@ -566,6 +573,10 @@ struct mmc_host {
 	 * actually disabling the clock from it's source.
 	 */
 	bool			card_clock_off;
+
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	unsigned int		crc_count;
+#endif
 
 #ifdef CONFIG_MMC_PERF_PROFILING
 	struct {

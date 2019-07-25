@@ -39,6 +39,11 @@
 #include <linux/msm-bus.h>
 #include <linux/pm_runtime.h>
 #include <trace/events/mmc.h>
+#include <linux/proc_fs.h>
+
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+#include <linux/bootdevice.h>
+#endif
 
 #include "sdhci-msm.h"
 #include "sdhci-msm-ice.h"
@@ -334,7 +339,7 @@ static const u32 tuning_block_128[] = {
 
 /* global to hold each slot instance for debug */
 static struct sdhci_msm_host *sdhci_slot[2];
-
+static int sdhci_irq_gpio;
 static int disable_slots;
 /* root can write, others read */
 module_param(disable_slots, int, S_IRUGO|S_IWUSR);
@@ -1841,6 +1846,9 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	}
 
 	pdata->status_gpio = of_get_named_gpio_flags(np, "cd-gpios", 0, &flags);
+
+	sdhci_irq_gpio = pdata->status_gpio;
+
 	if (gpio_is_valid(pdata->status_gpio) && !(flags & OF_GPIO_ACTIVE_LOW))
 		pdata->caps2 |= MMC_CAP2_CD_ACTIVE_HIGH;
 
@@ -2375,7 +2383,16 @@ static int sdhci_msm_setup_vreg(struct sdhci_msm_pltfm_data *pdata,
 			if (enable)
 				ret = sdhci_msm_vreg_enable(vreg_table[i]);
 			else
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+			{
 				ret = sdhci_msm_vreg_disable(vreg_table[i]);
+				/* add delay between vdd and vddio when power down for SD card */
+				if((i==0) && (pdata->nonremovable != true))
+					udelay(1300);
+			}
+#else
+				ret = sdhci_msm_vreg_disable(vreg_table[i]);
+#endif
 			if (ret)
 				goto out;
 		}
@@ -2610,6 +2627,10 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 		io_level = REQ_IO_HIGH;
 	}
 	if (irq_status & CORE_PWRCTL_BUS_OFF) {
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		if(!strcmp(mmc_hostname(msm_host->mmc), "mmc1"))
+			pr_err("%s: Received CORE_PWRCTL_BUS_OFF, msm_host->pltfm_init_done=%d.\n", mmc_hostname(msm_host->mmc), msm_host->pltfm_init_done);
+#endif
 		if (msm_host->pltfm_init_done)
 			ret = sdhci_msm_setup_vreg(msm_host->pdata,
 					false, false);
@@ -4214,6 +4235,52 @@ static void sdhci_msm_cmdq_init(struct sdhci_host *host,
 }
 #endif
 
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+/*
+ * To get the gpio info when SD plugged in, based on the device tree info of sdcard
+ * return 1, mean high active and set MMC_CAP2_CD_ACTIVE_HIGH bit
+ * return 0, mean low  active and clear MMC_CAP2_CD_ACTIVE_HIGH
+ * return -1, mean has some errors
+ **/
+static int sdhci_msm_set_gpio_info(struct sdhci_msm_pltfm_data *pdata)
+{
+	int ret = -1;
+	char prop_name[MAX_PROP_SIZE] = {0};
+	struct device_node *np = NULL;
+
+	if(!pdata)
+	{
+		/*if pdata is NULL,return 0.*/
+		return ret;
+	}
+
+	/*try to get the device node huawei-gpio-info.*/
+	np = of_find_compatible_node(NULL,NULL,"huawei-gpio-info");
+	if(!np)
+	{
+		/*if np is NULL, default is high: return 0. it is recommended to record the active info by dts*/
+		pdata->caps2 |= MMC_CAP2_CD_ACTIVE_HIGH;
+		ret = 1;
+		return ret;
+	}
+
+	snprintf(prop_name, MAX_PROP_SIZE,
+			"%s", "huawei,voltage-active-high");
+	if (of_get_property(np, prop_name, NULL))
+	{
+		pdata->caps2 |= MMC_CAP2_CD_ACTIVE_HIGH;
+		ret = 1;
+	}
+	else
+	{
+		pdata->caps2 &= ~MMC_CAP2_CD_ACTIVE_HIGH;
+		ret = 0;
+	}
+
+	return ret;
+}
+#endif
+
 static bool sdhci_msm_is_bootdevice(struct device *dev)
 {
 	if (strnstr(saved_command_line, "androidboot.bootdevice=",
@@ -4234,6 +4301,36 @@ static bool sdhci_msm_is_bootdevice(struct device *dev)
 	 * return true as we don't know the boot device anyways.
 	 */
 	return true;
+}
+
+static int sdcard_intr_gpio_read(struct seq_file *m, void *v)
+{
+	int gpio_value;
+
+	gpio_value = gpio_get_value_cansleep(sdhci_irq_gpio);
+	pr_debug("%s: gpio_value is %d\n",__func__,gpio_value);
+	seq_printf(m, "%d\n", gpio_value);
+
+	return 0;
+}
+
+static int sdcard_intr_gpio_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, sdcard_intr_gpio_read, NULL);
+}
+
+static const struct file_operations sdcard_intr_gpio_fops = {
+	.open		= sdcard_intr_gpio_proc_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static void sdcard_intr_gpio_create_proc(void)
+{
+	struct proc_dir_entry *entry;
+	entry = proc_create("sdcard_intr_gpio_value", 0 /* default mode */,
+			NULL /* parent dir */, &sdcard_intr_gpio_fops);
 }
 
 static int sdhci_msm_probe(struct platform_device *pdev)
@@ -4334,6 +4431,22 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "DT parsing error\n");
 			goto pltfm_free;
 		}
+
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		if(sdhci_msm_set_gpio_info(msm_host->pdata) == 1)
+		{
+			pr_err("the voltage of gpio is high when insert the sdcard.\n");
+		}
+		else if (sdhci_msm_set_gpio_info(msm_host->pdata) == 0)
+		{
+			pr_err("the voltage of gpio is low when insert the sdcard.\n");
+		}
+		else
+		{
+			pr_err("sdhci_msm_set_gpio_info failed.\n");
+		}
+#endif
+
 	} else {
 		dev_err(&pdev->dev, "No device tree node\n");
 		goto pltfm_free;
@@ -4530,6 +4643,9 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	 */
 	mb();
 
+	if(!strcmp(mmc_hostname(host->mmc), "mmc1"))
+		sdcard_intr_gpio_create_proc();
+
 	/*
 	 * Following are the deviations from SDHC spec v3.0 -
 	 * 1. Card detection is handled using separate GPIO.
@@ -4608,8 +4724,21 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	msm_host->mmc->caps2 |= MMC_CAP2_SLEEP_AWAKE;
 	msm_host->mmc->pm_caps |= MMC_PM_KEEP_POWER | MMC_PM_WAKE_SDIO_IRQ;
 
-	if (msm_host->pdata->nonremovable)
+	if (msm_host->pdata->nonremovable) {
 		msm_host->mmc->caps |= MMC_CAP_NONREMOVABLE;
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		msm_host->mmc->mmc_enter_ioctl_multi_cmd = 0;
+#endif
+	}
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	else
+	{
+		msm_host->mmc->change_slot = 1;
+		msm_host->mmc->sd_init_retry_cnt=0;
+		msm_host->mmc->sd_present=1;
+		msm_host->mmc->sd_acmd41_timeout_cnt = 0;
+	}
+#endif
 
 	if (msm_host->pdata->nonhotplug)
 		msm_host->mmc->caps2 |= MMC_CAP2_NONHOTPLUG;
@@ -4777,6 +4906,11 @@ out_host_free:
 	devm_kfree(&pdev->dev, msm_host);
 out:
 	pr_debug("%s: Exit %s\n", dev_name(&pdev->dev), __func__);
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	if (get_bootdevice_type() == BOOT_DEVICE_EMMC) {
+		set_bootdevice_name(&pdev->dev);
+	}
+#endif
 	return ret;
 }
 
@@ -4934,6 +5068,7 @@ static int sdhci_msm_suspend(struct device *dev)
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct mmc_host *mmc = host->mmc;
 	int ret = 0;
 	int sdio_cfg = 0;
 	ktime_t start = ktime_get();
@@ -4950,6 +5085,8 @@ static int sdhci_msm_suspend(struct device *dev)
 	ret = sdhci_msm_runtime_suspend(dev);
 out:
 	sdhci_msm_disable_controller_clock(host);
+	/* cancel any clock gating work scheduled by mmc_host_clk_release() */
+	cancel_delayed_work_sync(&mmc->clk_gate_work);
 	if (host->mmc->card && mmc_card_sdio(host->mmc->card)) {
 		sdio_cfg = sdhci_msm_cfg_sdio_wakeup(host, true);
 		if (sdio_cfg)

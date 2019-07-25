@@ -27,6 +27,11 @@
 #include <linux/types.h>
 #include <soc/qcom/boot_stats.h>
 
+#ifdef CONFIG_HUAWEI_BOOT_TIME
+extern void get_uefi_time(unsigned long long ticks_from_power);
+#endif
+
+
 static void __iomem *mpm_counter_base;
 static uint32_t mpm_counter_freq;
 struct boot_stats __iomem *boot_stats;
@@ -130,6 +135,10 @@ int boot_stats_init(void)
 		return -ENODEV;
 
 	print_boot_stats();
+
+#ifdef CONFIG_HUAWEI_BOOT_TIME
+	get_uefi_time(readl_relaxed(mpm_counter_base) * 1000 / mpm_counter_freq);
+#endif
 
 	if (!(boot_marker_enabled()))
 		boot_stats_exit();

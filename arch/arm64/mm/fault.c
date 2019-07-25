@@ -45,6 +45,12 @@
 
 #include <trace/events/exception.h>
 
+#ifdef CONFIG_HUAWEI_BOOST_SIGKILL_FREE
+#include <linux/boost_sigkill_free.h>
+#endif
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+#include <linux/rainbow_reset_detect_api.h>
+#endif
 static const char *fault_name(unsigned int esr);
 
 #ifdef CONFIG_KPROBES
@@ -184,7 +190,19 @@ static void __do_kernel_fault(struct mm_struct *mm, unsigned long addr,
 	pr_alert("Unable to handle kernel %s at virtual address %08lx\n",
 		 (addr < PAGE_SIZE) ? "NULL pointer dereference" :
 		 "paging request", addr);
-
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+	rainbow_reset_detect_m_reason_set(FD_M_APANIC);
+	if(addr < PAGE_SIZE)
+	{
+		rainbow_reset_detect_s_reason_set(FD_S_APANIC_NULL_POINTER);
+		rainbow_reset_detect_s_reason_str_set("Null_pointer");
+	}
+	else
+	{
+		rainbow_reset_detect_s_reason_set(FD_S_APANIC_PAGING_REQUEST);
+		rainbow_reset_detect_s_reason_str_set("Paging_request_fail");
+	}
+#endif
 	show_pte(mm, addr);
 	die("Oops", regs, esr);
 	bust_spinlocks(0);
@@ -244,6 +262,15 @@ static int __do_page_fault(struct mm_struct *mm, unsigned long addr,
 {
 	struct vm_area_struct *vma;
 	int fault;
+
+#ifdef CONFIG_HUAWEI_BOOST_SIGKILL_FREE
+	if (unlikely(test_bit(MMF_FAST_FREEING, &mm->flags))) {
+		task_clear_jobctl_pending(tsk, JOBCTL_PENDING_MASK);
+		sigaddset(&tsk->pending.signal, SIGKILL);
+		set_tsk_thread_flag(tsk, TIF_SIGPENDING);
+		return VM_FAULT_BADMAP;
+	}
+#endif
 
 	vma = find_vma(mm, addr);
 	fault = VM_FAULT_BADMAP;
@@ -598,7 +625,10 @@ asmlinkage void __exception do_mem_abort(unsigned long addr, unsigned int esr,
 
 	pr_alert("Unhandled fault: %s (0x%08x) at 0x%016lx\n",
 		 inf->name, esr, addr);
-
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+	rainbow_reset_detect_s_reason_set(FD_S_APANIC_UNHANDLE_FAULT);
+	rainbow_reset_detect_s_reason_str_set_format("Unhandled_fault_%s",inf->name);
+#endif
 	info.si_signo = inf->sig;
 	info.si_errno = 0;
 	info.si_code  = inf->code;

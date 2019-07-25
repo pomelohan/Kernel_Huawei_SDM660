@@ -84,6 +84,12 @@ config SCSI_UFS_QCOM
 	  Select this if you have UFS controller on QCOM chipset.
 	  If unsure, say N.
 
+config UFSHPB
+        bool "UFSHPB (EXPERIMENTAL)"
+        depends on SCSI_UFSHCD
+        ---help---
+        UFSHPB v1.0 driver
+
 config SCSI_UFS_QCOM_ICE
 	bool "QCOM specific hooks to Inline Crypto Engine for UFS driver"
 	depends on SCSI_UFS_QCOM && CRYPTO_DEV_QCOM_ICE

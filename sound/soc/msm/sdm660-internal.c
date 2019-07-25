@@ -1198,7 +1198,7 @@ static void *def_msm_int_wcd_mbhc_cal(void)
 		return NULL;
 
 #define S(X, Y) ((WCD_MBHC_CAL_PLUG_TYPE_PTR(msm_int_wcd_cal)->X) = (Y))
-	S(v_hs_max, 1500);
+	S(v_hs_max, 1700);
 #undef S
 #define S(X, Y) ((WCD_MBHC_CAL_BTN_DET_PTR(msm_int_wcd_cal)->X) = (Y))
 	S(num_btn, WCD_MBHC_DEF_BUTTONS);
@@ -1221,16 +1221,17 @@ static void *def_msm_int_wcd_mbhc_cal(void)
 	 * 210-290 == Button 2
 	 * 360-680 == Button 3
 	 */
-	btn_low[0] = 75;
-	btn_high[0] = 75;
-	btn_low[1] = 150;
-	btn_high[1] = 150;
-	btn_low[2] = 225;
-	btn_high[2] = 225;
+	btn_low[0] = 87;
+	btn_high[0] = 87;
+	btn_low[1] = 120;
+	btn_high[1] = 120;
+	btn_low[2] = 215;
+	btn_high[2] = 215;
 	btn_low[3] = 450;
-	btn_high[3] = 450;
+	btn_high[3] = 475;
+	/*do not support button 4, so modify value*/
 	btn_low[4] = 500;
-	btn_high[4] = 500;
+	btn_high[4] = 485;
 
 	return msm_int_wcd_cal;
 }
@@ -1277,6 +1278,9 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_ignore_suspend(dapm, "AMIC1");
 	snd_soc_dapm_ignore_suspend(dapm, "AMIC2");
 	snd_soc_dapm_ignore_suspend(dapm, "AMIC3");
+	snd_soc_dapm_sync(dapm);
+
+	dapm = snd_soc_codec_get_dapm(dig_cdc);
 	snd_soc_dapm_ignore_suspend(dapm, "DMIC1");
 	snd_soc_dapm_ignore_suspend(dapm, "DMIC2");
 	snd_soc_dapm_ignore_suspend(dapm, "DMIC3");
@@ -2311,6 +2315,26 @@ static struct snd_soc_dai_link msm_int_wsa_dai[] = {
 	},
 };
 
+#ifdef CONFIG_HUAWEI_SMARTPAKIT_AUDIO
+static struct snd_soc_dai_link msm_tert_hostless_dai[] = {
+	{/* hw:x,40 */
+		.name = "Tertiary MI2S_TX Hostless",
+		.stream_name = "Tertiary MI2S_TX Hostless",
+		.cpu_dai_name = "TERT_MI2S_TX_HOSTLESS",
+		.platform_name = "msm-pcm-hostless",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
+		.ignore_suspend = 1,
+		.dpcm_capture = 1,
+		.dynamic = 1,
+		.ignore_pmdown_time = 1,
+	},
+};
+#endif /*CONFIG_HUAWEI_SMARTPAKIT_AUDIO*/
+
 static struct snd_soc_dai_link msm_int_be_dai[] = {
 	/* Backend I2S DAI Links */
 	{
@@ -3003,6 +3027,16 @@ static struct snd_soc_card *msm_int_populate_sndcard_dailinks(
 		       sizeof(msm_int_wsa_dai));
 		len1 += ARRAY_SIZE(msm_int_wsa_dai);
 	}
+#ifdef CONFIG_HUAWEI_SMARTPAKIT_AUDIO
+	else {
+		memcpy(dailink + len1,
+		       msm_tert_hostless_dai,
+		       sizeof(msm_tert_hostless_dai));
+		len1 += ARRAY_SIZE(msm_tert_hostless_dai);
+
+	}
+#endif /*CONFIG_HUAWEI_SMARTPAKIT_AUDIO*/
+
 	memcpy(dailink + len1, msm_int_be_dai, sizeof(msm_int_be_dai));
 	len1 += ARRAY_SIZE(msm_int_be_dai);
 

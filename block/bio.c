@@ -333,6 +333,7 @@ void bio_chain(struct bio *bio, struct bio *parent)
 {
 	BUG_ON(bio->bi_private || bio->bi_end_io);
 
+	bio->bi_rw |= REQ_CHAINED;
 	bio->bi_private = parent;
 	bio->bi_end_io	= bio_chain_endio;
 	bio_inc_remaining(parent);
@@ -1773,10 +1774,21 @@ void bio_endio(struct bio *bio)
 			bio_put(bio);
 			bio = parent;
 		} else {
+	#ifdef CONFIG_BLK_DEV_THROTTLING
+			if (bio->bi_throtl_end_io2)
+				bio->bi_throtl_end_io2(bio);
+
+			if (bio->bi_throtl_end_io1)
+				bio->bi_throtl_end_io1(bio);
+#endif	
 			if (bio->bi_end_io) {
 				blk_update_perf_stats(bio);
 				bio->bi_end_io(bio);
 			}
+
+
+
+
 			bio = NULL;
 		}
 	}
@@ -1974,7 +1986,9 @@ EXPORT_SYMBOL(bioset_create_nobvec);
  */
 int bio_associate_blkcg(struct bio *bio, struct cgroup_subsys_state *blkcg_css)
 {
+	/*lint -save -e730*/
 	if (unlikely(bio->bi_css))
+	/*lint -restore*/
 		return -EBUSY;
 	css_get(blkcg_css);
 	bio->bi_css = blkcg_css;

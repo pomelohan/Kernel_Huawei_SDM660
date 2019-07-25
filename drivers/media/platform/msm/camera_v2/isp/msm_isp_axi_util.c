@@ -745,11 +745,16 @@ void msm_isp_check_for_output_error(struct vfe_device *vfe_dev,
 				* and return empty buffer for controllable
 				* outputs
 				*/
-				sof_info->regs_not_updated =
-					!vfe_dev->reg_updated;
-				pr_err("Drop frame no reg update\n");
-				if (msm_isp_drop_frame(vfe_dev, stream_info, ts,
-					sof_info)) {
+				if(vfe_dev->is_split) {
+					if (vfe_dev->pdev->id == ISP_VFE1) {
+						vfe_dev->isp_page->drop_reconfig =1;
+						pr_err("Drop frame no reg update vfe_dev->pdev->id is ISP_VFE1\n");
+					}
+				}else {
+					vfe_dev->isp_page->drop_reconfig =1;
+					pr_err("Drop frame no reg update1\n");
+				}
+				if (msm_isp_drop_frame(vfe_dev, stream_info, ts,sof_info)) {
 					pr_err("drop frame failed\n");
 				}
 			}
@@ -2008,7 +2013,7 @@ static void msm_isp_handle_done_buf_frame_id_mismatch(
 		ret = vfe_dev->buf_mgr->ops->buf_done(vfe_dev->buf_mgr,
 			buf->bufq_handle, buf->buf_idx, time_stamp,
 			frame_id,
-			stream_info->runtime_output_format);
+			stream_info->runtime_output_format, false);
 	if (ret == -EFAULT) {
 		msm_isp_halt_send_error(vfe_dev, ISP_EVENT_BUF_FATAL_ERROR);
 		return;
@@ -2086,7 +2091,7 @@ static int msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 				vfe_dev->buf_mgr,
 				buf->bufq_handle, buf->buf_idx,
 				time_stamp, frame_id,
-				stream_info->runtime_output_format);
+				stream_info->runtime_output_format, false);
 
 		if (rc == -EFAULT) {
 			msm_isp_halt_send_error(vfe_dev,
@@ -2154,7 +2159,7 @@ static int msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 		buf->buf_debug.put_state_last ^= 1;
 		rc = vfe_dev->buf_mgr->ops->buf_done(vfe_dev->buf_mgr,
 			buf->bufq_handle, buf->buf_idx, time_stamp,
-			frame_id, stream_info->runtime_output_format);
+			frame_id, stream_info->runtime_output_format, false);
 		if (rc == -EFAULT) {
 			msm_isp_halt_send_error(vfe_dev,
 					ISP_EVENT_BUF_FATAL_ERROR);
@@ -3394,7 +3399,7 @@ static int msm_isp_return_empty_buffer(struct vfe_device *vfe_dev,
 	rc = vfe_dev->buf_mgr->ops->buf_done(vfe_dev->buf_mgr,
 		buf->bufq_handle, buf->buf_idx,
 		&timestamp.buf_time, frame_id,
-		stream_info->runtime_output_format);
+		stream_info->runtime_output_format, true);
 	if (rc == -EFAULT) {
 		msm_isp_halt_send_error(vfe_dev,
 			ISP_EVENT_BUF_FATAL_ERROR);
@@ -3446,6 +3451,14 @@ static int msm_isp_request_frame(struct vfe_device *vfe_dev,
 	frame_src = SRC_TO_INTF(stream_info->stream_src);
 	pingpong_status = vfe_dev->hw_info->
 		vfe_ops.axi_ops.get_pingpong_status(vfe_dev);
+	/* As MCT is still processing it, need to drop the additional requests*/
+	if(vfe_dev->isp_page->drop_reconfig) {
+		trace_printk("%s:%d MCT has not yet delayed %d drop request %d\n",
+			__func__, __LINE__, vfe_dev->isp_page->drop_reconfig,frame_id);
+		pr_err("%s:%d MCT has not yet delayed %d drop request %d\n",
+			__func__, __LINE__, vfe_dev->isp_page->drop_reconfig,frame_id);
+		goto error;
+	}
 	/*
 	 * If PIX stream is active then RDI path uses SOF frame ID of PIX
 	 * In case of standalone RDI streaming, SOF are used from
@@ -3454,25 +3467,37 @@ static int msm_isp_request_frame(struct vfe_device *vfe_dev,
 	/*
 	 * If frame_id = 1 then no eof check is needed
 	 */
-	if (vfe_dev->axi_data.src_info[frame_src].active &&
-		frame_src == VFE_PIX_0 &&
-		vfe_dev->axi_data.src_info[frame_src].accept_frame == false) {
-		pr_debug("%s:%d invalid time to request frame %d\n",
-			__func__, __LINE__, frame_id);
-		goto error;
-	}
-	if ((vfe_dev->axi_data.src_info[frame_src].active && (frame_id !=
-		vfe_dev->axi_data.src_info[frame_src].frame_id + vfe_dev->
-		axi_data.src_info[frame_src].sof_counter_step)) ||
-		((!vfe_dev->axi_data.src_info[frame_src].active))) {
-		pr_debug("%s:%d invalid frame id %d cur frame id %d pix %d\n",
+	if ((frame_src == VFE_PIX_0) && (frame_id ==
+		vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id) &&
+		(stream_info->undelivered_request_cnt <= MAX_BUFFERS_IN_HW)){
+			vfe_dev->isp_page->drop_reconfig = 1;
+			pr_err("%s:%d vfe_%d request_frame %d cur frame id %d pix %d\n",
+				__func__, __LINE__, vfe_dev->pdev->id, frame_id,
+				vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id,
+				vfe_dev->axi_data.src_info[VFE_PIX_0].active);
+			trace_printk("%s:%d vfe_%d request_frame %d cur frame id %d pix %d\n",
+			__func__, __LINE__, vfe_dev->pdev->id, frame_id,
+			vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id,
+			vfe_dev->axi_data.src_info[VFE_PIX_0].active);
+	}else if (frame_id ==
+			vfe_dev->axi_data.src_info[frame_src].frame_id){
+		vfe_dev->isp_page->drop_reconfig = 1;
+		trace_printk("%s:%d vfe_%d request_frame %d cur frame id %d pix %d\n",
+			__func__, __LINE__, vfe_dev->pdev->id, frame_id,
+			vfe_dev->axi_data.src_info[frame_src].frame_id,
+			vfe_dev->axi_data.src_info[frame_src].active);
+	}else if ((vfe_dev->axi_data.src_info[frame_src].active && (frame_id !=
+			vfe_dev->axi_data.src_info[frame_src].frame_id + vfe_dev->
+			axi_data.src_info[frame_src].sof_counter_step)) ||
+			((!vfe_dev->axi_data.src_info[frame_src].active))){
+		pr_err("%s:%d invalid request frame id %d cur frame id %d pix %d\n",
 			__func__, __LINE__, frame_id,
 			vfe_dev->axi_data.src_info[frame_src].frame_id,
 			vfe_dev->axi_data.src_info[frame_src].active);
 		goto error;
 	}
 	if (stream_info->undelivered_request_cnt >= MAX_BUFFERS_IN_HW) {
-		pr_debug("%s:%d invalid undelivered_request_cnt %d frame id %d\n",
+		pr_err("%s:%d invalid undelivered_request_cnt %d frame id %d\n",
 			__func__, __LINE__,
 			stream_info->undelivered_request_cnt,
 			vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id);
@@ -3481,7 +3506,7 @@ static int msm_isp_request_frame(struct vfe_device *vfe_dev,
 	if ((frame_src == VFE_PIX_0) && !stream_info->undelivered_request_cnt &&
 		MSM_VFE_STREAM_STOP_PERIOD !=
 		stream_info->activated_framedrop_period) {
-		pr_debug("%s:%d vfe %d frame_id %d prev_pattern %x stream_id %x\n",
+		pr_err("%s:%d vfe %d frame_id %d prev_pattern %x stream_id %x\n",
 			__func__, __LINE__, vfe_dev->pdev->id, frame_id,
 			stream_info->activated_framedrop_period,
 			stream_info->stream_id);

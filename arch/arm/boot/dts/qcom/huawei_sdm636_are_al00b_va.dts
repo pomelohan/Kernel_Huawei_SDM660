@@ -1,0 +1,33 @@
+/* Copyright (c) 2017, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+
+/dts-v1/;
+
+#include "huawei_sdm636_base.dtsi"
+#include "huawei_sdm636_are_al00b_va/huawei.dtsi"
+#include "lcdkit/ares_al00_vb/devkit_lcd.dtsi"
+#include "lcdkit/v1/devkit_lcd.dtsi"
+#include "lcdkit/default/devkit_lcd.dtsi"
+
+/ {
+	model = "Huawei Technologies, Inc. ARES-AL00B-VA";
+	compatible = "qcom,sdm636-qrd", "qcom,sdm636", "qcom,qrd";
+	qcom,board-id = <8001 0>;
+	qcom,pmic-id = <0x0001001b 0x0101011a 0x0 0x0>,
+			<0x0001001b 0x0201011a 0x0 0x0>;
+	huawei,modem_id = <0xF6FC012D 0x0>;
+};
+
+&pm660l_l3 {
+        regulator-always-on;
+};

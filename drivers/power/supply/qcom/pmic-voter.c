@@ -361,6 +361,7 @@ int vote(struct votable *votable, const char *client_str, bool enabled, int val)
 
 	client_id = get_client_id(votable, client_str);
 	if (client_id < 0) {
+		pr_err(" client_id is null\n");
 		rc = client_id;
 		goto out;
 	}

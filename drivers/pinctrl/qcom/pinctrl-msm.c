@@ -498,13 +498,35 @@ static void msm_gpio_dbg_show_one(struct seq_file *s,
 	seq_printf(s, " %s", pulls[pull]);
 }
 
+/* forbid AP to access some gpios(they are controled by TZ),
+   filter them by this list.
+   case number:02383905
+*/
+static int gpio_tz(int gpio)
+{
+	static const int gpios_TZ[] = {0,1,2,3,8,9,10,11};
+	int i = 0;
+	/* the arry is depending on the QUPAC_660_Access.xml file in tz side
+	   all the SUBSYSTEM_ID is AC_TZ should be filter, otherwise phoen will crash
+	 */
+	for(i = 0; i < (sizeof gpios_TZ / sizeof gpios_TZ[0]); i++)
+	{
+		if(gpios_TZ[i] == gpio)
+		{
+			return 1;
+		}
+	}
+	return 0;
+}
+
 static void msm_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 {
 	unsigned gpio = chip->base;
 	unsigned i;
 
 	for (i = 0; i < chip->ngpio; i++, gpio++) {
-		msm_gpio_dbg_show_one(s, NULL, chip, i, gpio);
+		if(!gpio_tz(i))
+			msm_gpio_dbg_show_one(s, NULL, chip, i, gpio);
 		seq_puts(s, "\n");
 	}
 }

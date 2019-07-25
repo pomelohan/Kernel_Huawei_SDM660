@@ -468,3 +468,5 @@ config QCOM_SPMI_TEMP_ALARM
 	  temperature based upon the over temperature stage value.
 
 endif
+
+# thermal config AR000AFR67 delete for adding to new file

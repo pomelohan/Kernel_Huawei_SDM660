@@ -637,6 +637,10 @@ void migrate_page_copy(struct page *newpage, struct page *page)
 		SetPageChecked(newpage);
 	if (PageMappedToDisk(page))
 		SetPageMappedToDisk(newpage);
+#ifdef CONFIG_NON_SWAP
+	if (TestClearPageNonSwap(page))
+		SetPageNonSwap(newpage);
+#endif
 
 	/* Move dirty on pages not done by migrate_page_move_mapping() */
 	if (PageDirty(page))
@@ -647,6 +651,12 @@ void migrate_page_copy(struct page *newpage, struct page *page)
 	if (page_is_idle(page))
 		set_page_idle(newpage);
 
+#ifdef CONFIG_TASK_PROTECT_LRU
+	if (PageProtect(page)) {
+		SetPageProtect(newpage);
+		set_page_num(newpage, get_page_num(page));
+	}
+#endif
 	/*
 	 * Copy NUMA information to the new page, to prevent over-eager
 	 * future migrations of this same page.

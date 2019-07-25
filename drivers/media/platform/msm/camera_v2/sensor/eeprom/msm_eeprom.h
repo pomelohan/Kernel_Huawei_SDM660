@@ -46,6 +46,9 @@ struct msm_eeprom_ctrl_t {
 	int32_t userspace_probe;
 	struct msm_eeprom_memory_block_t cal_data;
 	uint8_t is_supported;
+#ifdef CONFIG_FACTORY_ANDROID
+	uint8_t is_opened;
+#endif
 };
 
 #endif

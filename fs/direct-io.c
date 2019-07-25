@@ -37,6 +37,8 @@
 #include <linux/uio.h>
 #include <linux/atomic.h>
 #include <linux/prefetch.h>
+#include <linux/iolimit_cgroup.h>
+
 
 /*
  * How many user pages to map in one call to get_user_pages().  This determines
@@ -402,6 +404,8 @@ static inline void dio_bio_submit(struct dio *dio, struct dio_submit *sdio)
 	bio->bi_dio_inode = dio->inode;
 	dio->bio_bdev = bio->bi_bdev;
 
+	blk_throtl_get_quota(bio->bi_bdev, bio->bi_iter.bi_size,
+			     msecs_to_jiffies(100), true);
 	if (sdio->submit_io) {
 		sdio->submit_io(dio->rw, bio, dio->inode,
 			       sdio->logical_offset_in_bio);
@@ -945,7 +949,13 @@ static int do_direct_IO(struct dio *dio, struct dio_submit *sdio,
 			unsigned this_chunk_bytes;	/* # of bytes mapped */
 			unsigned this_chunk_blocks;	/* # of blocks */
 			unsigned u;
-
+#ifdef CONFIG_CGROUP_IOLIMIT
+			if ((dio->rw & WRITE) == WRITE) {
+				io_write_bandwidth_control(PAGE_SIZE);
+			} else {
+				io_read_bandwidth_control(PAGE_SIZE);
+			}
+#endif
 			if (sdio->blocks_available == 0) {
 				/*
 				 * Need to go and map some more disk

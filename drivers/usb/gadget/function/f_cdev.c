@@ -46,6 +46,11 @@
 #include <asm/ioctls.h>
 #include <asm-generic/termios.h>
 
+#ifdef CONFIG_HUAWEI_USB
+#include <linux/usb/huawei_usb.h>
+#endif
+
+
 #define DEVICE_NAME "at_usb"
 #define MODULE_NAME "msm_usb_bridge"
 #define NUM_INSTANCE 3
@@ -140,6 +145,22 @@ struct f_cdev_opts {
 	char *func_name;
 	u8 port_num;
 };
+#ifdef CONFIG_HUAWEI_USB
+#define GSERIAL_NO_PORTS  3
+static unsigned char usb_if_protocol_table[GSERIAL_NO_PORTS] = {
+	USB_IF_PROTOCOL_HW_PCUI,  /* hw PCUI for AT command */
+	USB_IF_PROTOCOL_HW_MODEM, /* hw modem interface */
+	USB_IF_PROTOCOL_NOPNP
+};
+
+static unsigned char ACM_GET_TYPE(unsigned int port_num)
+{
+	if (port_num < GSERIAL_NO_PORTS) {
+		return usb_if_protocol_table[port_num];
+	}
+	return (unsigned char)USB_IF_PROTOCOL_NOPNP;
+}
+#endif
 
 static int major, minors;
 struct class *fcdev_classp;
@@ -159,10 +180,18 @@ static struct usb_interface_descriptor cser_interface_desc = {
 	.bDescriptorType =	USB_DT_INTERFACE,
 	/* .bInterfaceNumber = DYNAMIC */
 	.bNumEndpoints =	3,
+#ifndef CONFIG_HUAWEI_USB
 	.bInterfaceClass =	USB_CLASS_VENDOR_SPEC,
 	.bInterfaceSubClass =	0,
 	.bInterfaceProtocol =	0,
-	/* .iInterface = DYNAMIC */
+			/* .iInterface = DYNAMIC */
+#else
+	.bInterfaceClass =	USB_IF_CLASS_HW_PNP21,
+	.bInterfaceSubClass =	USB_IF_SUBCLASS_HW_PNP21,
+	.bInterfaceProtocol =	0,
+			/* .iInterface = DYNAMIC */
+#endif
+
 };
 
 static struct usb_cdc_header_desc cser_header_desc  = {
@@ -746,6 +775,9 @@ static int usb_cser_bind(struct usb_configuration *c, struct usb_function *f)
 		goto fail;
 	port->port_usb.data_id = status;
 	cser_interface_desc.bInterfaceNumber = status;
+#ifdef CONFIG_HUAWEI_USB
+	cser_interface_desc.bInterfaceProtocol = ACM_GET_TYPE(port->port_num);
+#endif
 
 	status = -ENODEV;
 	ep = usb_ep_autoconfig(cdev->gadget, &cser_fs_in_desc);

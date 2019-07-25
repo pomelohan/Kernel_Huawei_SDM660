@@ -772,6 +772,17 @@ static struct ctl_table ipv4_table[] = {
 		.extra1		= &zero,
 		.extra2		= &one,
 	},
+#ifdef CONFIG_TCP_NODELAY
+	{
+		.procname	= "tcp_nodelay",
+		.data		= &sysctl_tcp_nodelay,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
+#endif
 	{
 		.procname	= "tcp_invalid_ratelimit",
 		.data		= &sysctl_tcp_invalid_ratelimit,
@@ -779,6 +790,17 @@ static struct ctl_table ipv4_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_ms_jiffies,
 	},
+#ifdef CONFIG_TCP_AUTOTUNING
+	{
+		.procname       = "tcp_autotuning",
+		.data           = &sysctl_tcp_autotuning,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1         = &zero,
+		.extra2         = &one,
+	},
+#endif
 	{
 		.procname       = "tcp_default_init_rwnd",
 		.data           = &sysctl_tcp_default_init_rwnd,

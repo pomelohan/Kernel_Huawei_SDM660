@@ -3,6 +3,7 @@ KASAN_SANITIZE_scm.o := n
 CFLAGS_scm.o :=$(call as-instr,.arch_extension sec,-DREQUIRES_SEC=1)
 
 ccflags-$(CONFIG_MSM_QBT1000) += -Idrivers/misc/
+ccflags-y += -Idrivers/hwsensor
 
 obj-$(CONFIG_MSM_INRUSH_CURRENT_MITIGATION) += inrush-current-mitigation.o
 obj-$(CONFIG_MSM_SMEM)	+=	msm_smem.o smem_debug.o
@@ -48,6 +49,8 @@ ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 	obj-y += subsystem_restart.o
 	obj-y += ramdump.o
 endif
+
+KCOV_INSTRUMENT_scm.o := n
 
 obj-$(CONFIG_QPNP_HAPTIC) += qpnp-haptic.o
 obj-$(CONFIG_QCOM_GSBI)	+=	qcom_gsbi.o
@@ -107,3 +110,4 @@ obj-$(CONFIG_QCOM_SMCINVOKE) += smcinvoke.o
 obj-$(CONFIG_QCOM_EARLY_RANDOM)	+= early_random.o
 obj-$(CONFIG_QCOM_CX_IPEAK) += cx_ipeak.o
 obj-$(CONFIG_MSM_CACHE_M4M_ERP64) += cache_m4m_erp64.o
+obj-y += pil-q6v5-mss/

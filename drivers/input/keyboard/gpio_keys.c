@@ -364,6 +364,8 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 	} else {
 		input_event(input, type, button->code, !!state);
 	}
+    dev_err(&bdata->input->dev, "%s, volume up key,button->code=%d, type=%d, state=%d\n", __func__, button->code, type, state);
+
 	input_sync(input);
 }
 

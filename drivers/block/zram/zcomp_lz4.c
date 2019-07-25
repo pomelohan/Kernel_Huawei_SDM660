@@ -15,7 +15,7 @@
 
 #include "zcomp_lz4.h"
 
-static void *zcomp_lz4_create(void)
+static void *zcomp_lz4_create(gfp_t flags)
 {
 	void *ret;
 
@@ -27,12 +27,10 @@ static void *zcomp_lz4_create(void)
 	 * A default stream will work well without further multiple
 	 * streams. That's why we use NORETRY | NOWARN.
 	 */
-	ret = kzalloc(LZ4_MEM_COMPRESS, GFP_NOIO | __GFP_NORETRY |
-					__GFP_NOWARN);
+	ret = kmalloc(LZ4_MEM_COMPRESS, flags);
 	if (!ret)
 		ret = __vmalloc(LZ4_MEM_COMPRESS,
-				GFP_NOIO | __GFP_NORETRY | __GFP_NOWARN |
-				__GFP_ZERO | __GFP_HIGHMEM,
+				flags | __GFP_HIGHMEM,
 				PAGE_KERNEL);
 	return ret;
 }

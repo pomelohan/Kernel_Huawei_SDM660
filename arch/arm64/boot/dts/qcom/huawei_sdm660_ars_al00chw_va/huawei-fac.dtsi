@@ -1,0 +1,9 @@
+/{
+		huawei_fac_info {
+		compatible = "huawei,hw_fac_info";
+		fac,product_name = "ARE-AL10";
+		fac,hardware_ver = "HL1AREM";
+		fac,software_ver = "ARS_AL00CHW_VA";
+		status = "ok";
+	};
+};

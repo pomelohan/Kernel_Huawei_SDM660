@@ -17,6 +17,9 @@
 #include <linux/sysctl.h>
 #include <linux/utsname.h>
 #include <trace/events/sched.h>
+#ifdef CONFIG_DETECT_HUAWEI_HUNG_TASK
+#include "huawei_hung_task.h"
+#endif
 
 /*
  * The number of tasks checked:
@@ -64,7 +67,9 @@ static int
 hung_task_panic(struct notifier_block *this, unsigned long event, void *ptr)
 {
 	did_panic = 1;
-
+#ifdef CONFIG_DETECT_HUAWEI_HUNG_TASK
+        fetch_hung_task_panic(did_panic);
+#endif
 	return NOTIFY_DONE;
 }
 
@@ -72,6 +77,7 @@ static struct notifier_block panic_block = {
 	.notifier_call = hung_task_panic,
 };
 
+#ifndef CONFIG_DETECT_HUAWEI_HUNG_TASK
 static void check_hung_task(struct task_struct *t, unsigned long timeout)
 {
 	unsigned long switch_count = t->nvcsw + t->nivcsw;
@@ -184,6 +190,7 @@ static void check_hung_uninterruptible_tasks(unsigned long timeout)
  unlock:
 	rcu_read_unlock();
 }
+#endif
 
 static unsigned long timeout_jiffies(unsigned long timeout)
 {
@@ -206,6 +213,9 @@ int proc_dohung_task_timeout_secs(struct ctl_table *table, int write,
 		goto out;
 
 	wake_up_process(watchdog_task);
+#ifdef CONFIG_DETECT_HUAWEI_HUNG_TASK
+        fetch_task_timeout_secs(sysctl_hung_task_timeout_secs);
+#endif
 
  out:
 	return ret;
@@ -227,15 +237,21 @@ static int watchdog(void *dummy)
 	set_user_nice(current, 0);
 
 	for ( ; ; ) {
+#ifdef CONFIG_DETECT_HUAWEI_HUNG_TASK
+                unsigned long timeout = HEARTBEAT_TIME;
+#else
 		unsigned long timeout = sysctl_hung_task_timeout_secs;
-
+#endif
 		while (schedule_timeout_interruptible(timeout_jiffies(timeout)))
 			timeout = sysctl_hung_task_timeout_secs;
 
 		if (atomic_xchg(&reset_hung_task, 0))
 			continue;
-
+#ifdef CONFIG_DETECT_HUAWEI_HUNG_TASK
+                check_hung_tasks_proposal(timeout);
+#else
 		check_hung_uninterruptible_tasks(timeout);
+#endif
 	}
 
 	return 0;
@@ -243,6 +259,13 @@ static int watchdog(void *dummy)
 
 static int __init hung_task_init(void)
 {
+#ifdef CONFIG_DETECT_HUAWEI_HUNG_TASK
+        int ret = 0;
+
+        ret = create_sysfs_hungtask();
+        if (ret)
+           pr_err("hungtask: create_sysfs_hungtask fail.\n");
+#endif
 	atomic_notifier_chain_register(&panic_notifier_list, &panic_block);
 	watchdog_task = kthread_run(watchdog, NULL, "khungtaskd");
 

@@ -62,6 +62,12 @@
 #define CREATE_TRACE_POINTS
 #include "trace/lowmemorykiller.h"
 
+#include "lowmem_dbg.h"
+
+#ifdef CONFIG_HUAWEI_KSTATE
+#include <linux/hw_kcollect.h>
+#endif
+
 static uint32_t lowmem_debug_level = 1;
 static short lowmem_adj[6] = {
 	0,
@@ -77,6 +83,7 @@ static int lowmem_minfree[6] = {
 	16 * 1024,	/* 64MB */
 };
 static int lowmem_minfree_size = 4;
+static ulong lowmem_kill_count = 0;
 static int lmk_fast_run = 1;
 
 static unsigned long lowmem_deathpending_timeout;
@@ -242,7 +249,7 @@ int can_use_cma_pages(gfp_t gfp_mask)
 	int i = 0;
 	int *mtype_fallbacks = get_migratetype_fallbacks(mtype);
 
-	if (is_migrate_cma(mtype)) {
+	if (is_migrate_cma(mtype) || mtype == MIGRATE_MOVABLE) {
 		can_use = 1;
 	} else {
 		for (i = 0;; i++) {
@@ -569,7 +576,13 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 			dump_tasks(NULL, NULL);
 		}
 
+		lowmem_dbg(selected_oom_score_adj);
 		lowmem_deathpending_timeout = jiffies + HZ;
+#ifdef CONFIG_HUAWEI_KSTATE
+		/*0 stand for low memory kill*/
+		hwkillinfo(selected->tgid, 0);
+#endif
+		lowmem_kill_count++;
 		rem += selected_tasksize;
 		rcu_read_unlock();
 		/* give the system time to free up the memory */
@@ -694,6 +707,7 @@ __MODULE_PARM_TYPE(adj, "array of short");
 module_param_array_named(adj, lowmem_adj, short, &lowmem_adj_size,
 			 S_IRUGO | S_IWUSR);
 #endif
+module_param_named(kill_count, lowmem_kill_count, ulong, S_IRUGO | S_IWUSR);
 module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
 			 S_IRUGO | S_IWUSR);
 module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);

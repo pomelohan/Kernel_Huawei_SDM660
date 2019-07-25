@@ -728,6 +728,12 @@ const char * const vmstat_text[] = {
 	"nr_inactive_file",
 	"nr_active_file",
 	"nr_unevictable",
+#ifdef CONFIG_TASK_PROTECT_LRU
+	"nr_inactive_prot_anon",
+	"nr_active_prot_anon",
+	"nr_inactive_prot_file",
+	"nr_active_prot_file",
+#endif
 	"nr_mlock",
 	"nr_anon_pages",
 	"nr_mapped",
@@ -763,8 +769,15 @@ const char * const vmstat_text[] = {
 	"workingset_nodereclaim",
 	"nr_anon_transparent_hugepages",
 	"nr_free_cma",
+#ifdef CONFIG_HUAWEI_UNMOVABLE_ISOLATE
+	"nr_free_unmovable_isolate1",
+	"nr_free_unmovable_isolate2",
+#endif
 	"nr_swapcache",
-
+        "nr_ioncache_pages",
+#ifdef CONFIG_NON_SWAP
+	"nr_non_swap",
+#endif
 	/* enum writeback_stat_item counters */
 	"nr_dirty_threshold",
 	"nr_dirty_background_threshold",

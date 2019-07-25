@@ -22,6 +22,8 @@
 #include <linux/qpnp/qpnp-revid.h>
 #include "fg-core.h"
 #include "fg-reg.h"
+#include <linux/power/huawei_fuelguage.h>
+#include <linux/power/huawei_dsm_charger.h>
 
 #define FG_GEN3_DEV_NAME	"qcom,fg-gen3"
 
@@ -29,6 +31,7 @@
 #define FG_BATT_SOC_PMI8998		0x10
 #define FG_BATT_INFO_PMI8998		0x11
 #define FG_MEM_INFO_PMI8998		0x0D
+#define UV_TO_MV                1000
 
 /* SRAM address and offset in ascending order */
 #define ESR_PULSE_THRESH_WORD		2
@@ -104,6 +107,8 @@
 #define CC_SOC_SW_OFFSET		0
 #define VOLTAGE_PRED_WORD		97
 #define VOLTAGE_PRED_OFFSET		0
+#define VOLTAGE_SHADOW_WORD		88
+#define VOLTAGE_SHADOW_OFFSET		1
 #define OCV_WORD			97
 #define OCV_OFFSET			2
 #define ESR_WORD			99
@@ -159,7 +164,11 @@ static void fg_encode_current(struct fg_sram_param *sp,
 static void fg_encode_default(struct fg_sram_param *sp,
 	enum fg_sram_param_id id, int val, u8 *buf);
 
+static int fg_get_chg_cycle_count(struct fg_chip *chip);
+
 static struct fg_irq_info fg_irqs[FG_IRQ_MAX];
+
+extern void cap_learning_event_done_notify(void);
 
 #define PARAM(_id, _addr_word, _addr_byte, _len, _num, _den, _offset,	\
 	      _enc, _dec)						\
@@ -241,6 +250,8 @@ static struct fg_sram_param pmi8998_v1_sram_params[] = {
 		1, 512, 1000000, 0, fg_encode_default, NULL),
 	PARAM(SLOPE_LIMIT, SLOPE_LIMIT_WORD, SLOPE_LIMIT_OFFSET, 1, 8192, 1000,
 		0, fg_encode_default, NULL),
+	PARAM(VOLTAGE_SHADOW, VOLTAGE_SHADOW_WORD, VOLTAGE_SHADOW_OFFSET, 2, 1000,
+				244141, 0, NULL, fg_decode_voltage_15b),
 };
 
 static struct fg_sram_param pmi8998_v2_sram_params[] = {
@@ -321,6 +332,8 @@ static struct fg_sram_param pmi8998_v2_sram_params[] = {
 		1, 512, 1000000, 0, fg_encode_default, NULL),
 	PARAM(SLOPE_LIMIT, SLOPE_LIMIT_WORD, SLOPE_LIMIT_OFFSET, 1, 8192, 1000,
 		0, fg_encode_default, NULL),
+	PARAM(VOLTAGE_SHADOW, VOLTAGE_SHADOW_WORD, VOLTAGE_SHADOW_OFFSET, 2, 1000,
+					244141, 0, NULL, fg_decode_voltage_15b),
 };
 
 static struct fg_alg_flag pmi8998_v1_alg_flags[] = {
@@ -401,6 +414,8 @@ module_param_named(
 
 static int fg_restart;
 static bool fg_sram_dump;
+static struct fg_chip *global_fg_chip = NULL;
+static int fg_batt_profile_first_load = 0;
 
 /* All getters HERE */
 
@@ -712,7 +727,7 @@ static int fg_get_msoc(struct fg_chip *chip, int *msoc)
 	if (rc < 0)
 		return rc;
 
-	*msoc = DIV_ROUND_CLOSEST(*msoc * FULL_CAPACITY, FULL_SOC_RAW);
+	*msoc = DIV_ROUND_CLOSEST(*msoc * FULL_CAPACITY, DIV_ROUND_CLOSEST(FULL_SOC_RAW*(FULL_CAPACITY - 2),FULL_CAPACITY));
 	return 0;
 }
 
@@ -838,10 +853,17 @@ static int fg_get_prop_capacity(struct fg_chip *chip, int *val)
 	if (rc < 0)
 		return rc;
 
-	if (chip->dt.linearize_soc && chip->delta_soc > 0)
+	if (chip->dt.linearize_soc && chip->delta_soc > 0) {
 		*val = chip->maint_soc;
-	else
-		*val = msoc;
+	}
+	else{
+			if(msoc > FULL_CAPACITY) {
+				*val = FULL_CAPACITY;
+			}
+			else {
+				*val = msoc;
+			}
+	}
 	return 0;
 }
 
@@ -925,6 +947,7 @@ static int fg_get_batt_profile(struct fg_chip *chip)
 
 	profile_node = of_batterydata_get_best_profile(batt_node,
 				chip->batt_id_ohms / 1000, NULL);
+	pr_info("batt id ohms %d\n",chip->batt_id_ohms / 1000);
 	if (IS_ERR(profile_node))
 		return PTR_ERR(profile_node);
 
@@ -942,6 +965,8 @@ static int fg_get_batt_profile(struct fg_chip *chip)
 
 	rc = of_property_read_u32(profile_node, "qcom,max-voltage-uv",
 			&chip->bp.float_volt_uv);
+	pr_info("battery float voltage:%ld\n", chip->bp.float_volt_uv);
+
 	if (rc < 0) {
 		pr_err("battery float voltage unavailable, rc:%d\n", rc);
 		chip->bp.float_volt_uv = -EINVAL;
@@ -949,6 +974,8 @@ static int fg_get_batt_profile(struct fg_chip *chip)
 
 	rc = of_property_read_u32(profile_node, "qcom,fastchg-current-ma",
 			&chip->bp.fastchg_curr_ma);
+	pr_info("battery fastchg current:%ld\n", chip->bp.fastchg_curr_ma);
+
 	if (rc < 0) {
 		pr_err("battery fastchg current unavailable, rc:%d\n", rc);
 		chip->bp.fastchg_curr_ma = -EINVAL;
@@ -956,6 +983,8 @@ static int fg_get_batt_profile(struct fg_chip *chip)
 
 	rc = of_property_read_u32(profile_node, "qcom,fg-cc-cv-threshold-mv",
 			&chip->bp.vbatt_full_mv);
+	pr_info("chip->bp.vbatt_full_mv:%ld\n", chip->bp.vbatt_full_mv);
+
 	if (rc < 0) {
 		pr_err("battery cc_cv threshold unavailable, rc:%d\n", rc);
 		chip->bp.vbatt_full_mv = -EINVAL;
@@ -1085,7 +1114,7 @@ static void fg_notify_charger(struct fg_chip *chip)
 	if (!chip->profile_available)
 		return;
 
-	prop.intval = chip->bp.float_volt_uv;
+	prop.intval = chip->bp.float_volt_uv/UV_TO_MV;
 	rc = power_supply_set_property(chip->batt_psy,
 			POWER_SUPPLY_PROP_VOLTAGE_MAX, &prop);
 	if (rc < 0) {
@@ -1094,7 +1123,7 @@ static void fg_notify_charger(struct fg_chip *chip)
 		return;
 	}
 
-	prop.intval = chip->bp.fastchg_curr_ma * 1000;
+	prop.intval = chip->bp.fastchg_curr_ma*UV_TO_MV;
 	rc = power_supply_set_property(chip->batt_psy,
 			POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX, &prop);
 	if (rc < 0) {
@@ -1219,7 +1248,17 @@ static bool is_parallel_charger_available(struct fg_chip *chip)
 
 	return true;
 }
+static bool is_charger_available(struct fg_chip *chip)
+{
+	if (chip->batt_psy)
+		return true;
 
+	chip->batt_psy = power_supply_get_by_name("battery");
+	if (!chip->batt_psy)
+		return false;
+
+	return true;
+}
 static int fg_save_learned_cap_to_sram(struct fg_chip *chip)
 {
 	int16_t cc_mah;
@@ -1320,6 +1359,9 @@ static void fg_cap_learning_post_process(struct fg_chip *chip)
 {
 	int64_t max_inc_val, min_dec_val, old_cap;
 	int rc;
+#ifdef CONFIG_HUAWEI_PMU_DSM
+	char learned_cc_info[DSM_POST_BUF_SIZE] = {0,};
+#endif
 
 	if (is_qnovo_en(chip)) {
 		fg_dbg(chip, FG_CAP_LEARN, "applying skew %d on current learnt capacity %lld\n",
@@ -1367,13 +1409,20 @@ static void fg_cap_learning_post_process(struct fg_chip *chip)
 			chip->cl.learned_cc_uah = min_dec_val;
 		}
 	}
-
+	cap_learning_event_done_notify();
 	rc = fg_save_learned_cap_to_sram(chip);
 	if (rc < 0)
 		pr_err("Error in saving learned_cc_uah, rc=%d\n", rc);
 
 	fg_dbg(chip, FG_CAP_LEARN, "final cc_uah = %lld, learned capacity %lld -> %lld uah\n",
 		chip->cl.final_cc_uah, old_cap, chip->cl.learned_cc_uah);
+#ifdef CONFIG_HUAWEI_PMU_DSM
+		snprintf(learned_cc_info, DSM_POST_BUF_SIZE, "learned cc: %ld, chg_cycle:%d\n",
+					chip->cl.learned_cc_uah,
+					fg_get_chg_cycle_count(chip));
+		dsm_post_chg_bms_info(DSM_BMS_LEARN_CC, learned_cc_info);
+#endif
+
 }
 
 static int fg_cap_learning_process_full_data(struct fg_chip *chip)
@@ -2541,6 +2590,7 @@ static bool is_profile_load_required(struct fg_chip *chip)
 	u8 buf[PROFILE_COMP_LEN], val;
 	bool profiles_same = false;
 	int rc;
+	int pred_value,shadow_value;
 
 	rc = fg_sram_read(chip, PROFILE_INTEGRITY_WORD,
 			PROFILE_INTEGRITY_OFFSET, &val, 1, FG_IMA_DEFAULT);
@@ -2571,8 +2621,22 @@ static bool is_profile_load_required(struct fg_chip *chip)
 		}
 		profiles_same = memcmp(chip->batt_profile, buf,
 					PROFILE_COMP_LEN) == 0;
-		if (profiles_same) {
+
+		rc=fg_get_sram_prop(chip, FG_SRAM_VOLTAGE_PRED,&pred_value);
+		if (rc < 0) {
+			pr_err("Error in getting VOLTAGE_PRED, rc=%d\n", rc);
+			return false;
+		}
+		rc=fg_get_sram_prop(chip, FG_SRAM_VOLTAGE_SHADOW,&shadow_value);
+		if (rc < 0) {
+			pr_err("Error in getting VOLTAGE_SHADOW, rc=%d\n", rc);
+			return false;
+		}
+
+
+	if((profiles_same)||(abs(pred_value-shadow_value) < chip->dt.vbattestdiff)){
 			fg_dbg(chip, FG_STATUS, "Battery profile is same, not loading it\n");
+			pr_info("battery profile is same or vbattdiff in the margin\n");
 			return false;
 		}
 
@@ -2680,6 +2744,14 @@ static void profile_load_work(struct work_struct *work)
 			chip->batt_id_ohms / 1000, rc);
 		goto out;
 	}
+		/* Sony_scud_default is the default battery profile */
+	if (strcmp("Sony_scud_default", chip->bp.batt_type_str) == 0) {
+			pr_info("no batt profile matched, use Sony_scud_default\n");
+#ifdef CONFIG_HUAWEI_PMU_DSM
+			dsm_post_chg_bms_info(DSM_BMS_NOT_STANDARD_BATTERY,
+						"batt id not matched\n");
+#endif
+		}
 
 	if (!chip->profile_available)
 		goto out;
@@ -2692,6 +2764,8 @@ static void profile_load_work(struct work_struct *work)
 	chip->cl.learned_cc_uah = 0;
 	chip->cl.active = false;
 	mutex_unlock(&chip->cl.lock);
+	        fg_batt_profile_first_load = 1;
+
 
 	fg_dbg(chip, FG_STATUS, "profile loading started\n");
 	rc = fg_masked_write(chip, BATT_SOC_RESTART(chip), RESTART_GO_BIT, 0);
@@ -3370,8 +3444,181 @@ end_work:
 	mutex_unlock(&chip->ttf.lock);
 }
 
-/* PSY CALLBACKS STAY HERE */
+static void fg_reset_learned_cc(struct fg_chip *chip, int clear)
+{
+	if (!chip || !clear) {
+		pr_err("clear flag error\n");
+		return;
+	}
 
+	pr_info("reset learned cc uah\n");
+	chip->cl.learned_cc_uah = (int64_t)chip->cl.nom_cap_uah;
+	fg_save_learned_cap_to_sram(chip);
+}
+/* PSY CALLBACKS STAY HERE */
+#if 0
+#define BUFFER_SIZE	30
+static char DUMP_FG_SOC[] = {0x08, 0x09, 0x10};
+static char DUMP_FG_BATT[] = {0x08};
+static char DUMP_REVID_TP_REV[] = {0x08};
+static char DUMP_FG_MEMIF[] = {0x00};
+
+static void get_fuelguage_register_info(char *reg_value, u16 base_addr,
+					char *offset, int length)
+{
+	char buff[BUFFER_SIZE] = {0};
+	int i = 0;
+	int rc = 0;
+	char reg = 0;
+
+	if (NULL == reg_value || NULL == offset) {
+		pr_err("the reg_value or offset is NULL\n");
+		return;
+	}
+
+	if (!global_fg_chip) {
+		pr_err("global_chip is not init ready\n");
+		return;
+	}
+
+	for (i = 0; i < length; i++) {
+		rc = fg_read(global_fg_chip, &reg, base_addr + offset[i], 1);
+		if (rc) {
+			pr_err("spmi read failed: addr=%03X, rc=%d\n",
+					base_addr + offset[i], rc);
+			return;
+		}
+		snprintf(buff, BUFFER_SIZE, "0x%-8.4x", reg);
+		strncat_length_protect(reg_value, buff);
+	}
+}
+static void get_fuelguage_register_head(char *reg_head, u16 base_addr,
+					char *offset, int length)
+{
+	char buff[BUFFER_SIZE] = {0};
+	int i = 0;
+
+	for (i = 0; i < length; i++) {
+		snprintf(buff, BUFFER_SIZE, "R[0x%4x] ", base_addr + offset[i]);
+		strncat_length_protect(reg_head, buff);
+	}
+}
+#endif
+
+static void qpnp_fuelguage_dump_register(char *reg_value)
+{
+	int rc = 0;
+	int batt_esr = 0,batt_soc = 0, batt_id = 0, resistance = 0;
+	int cycle_count = 0, cycle_count_id = 0,charge_now_raw = 0;
+	int64_t charge_full = 0,final_cc_uah = 0,learned_cc_uah = 0;
+	int64_t  charge_now = 0, full_design = 0;
+
+	if (NULL == reg_value) {
+		pr_err("the reg_value is NULL\n");
+		return;
+	}
+
+	if (!global_fg_chip) {
+		pr_err("global_chip is not init ready\n");
+		return;
+	}
+
+	memset(reg_value, 0, CHARGELOG_SIZE);
+
+	/* add 14 item info, the head is chars */
+	rc = fg_get_sram_prop(global_fg_chip, FG_SRAM_ESR, &batt_esr);
+	if (rc < 0) {
+		pr_err("failed to get ESR, rc=%d\n", rc);
+	}
+	final_cc_uah = global_fg_chip->cl.final_cc_uah;
+	rc = fg_get_prop_capacity(global_fg_chip, &batt_soc);
+	if (rc < 0) {
+		pr_err("failed to get ESR, rc=%d\n", rc);
+	}	
+	learned_cc_uah = global_fg_chip->cl.learned_cc_uah;
+	batt_id = global_fg_chip->batt_id_ohms;
+	 
+	rc = fg_get_battery_resistance(global_fg_chip, &resistance);
+	if (rc < 0) {
+		pr_err("failed to get ESR, rc=%d\n", rc);
+	}	
+	cycle_count = fg_get_cycle_count(global_fg_chip);
+	cycle_count_id = global_fg_chip->cyc_ctr.id;
+	full_design = global_fg_chip->cl.nom_cap_uah;
+	charge_full = global_fg_chip->cl.learned_cc_uah;
+	charge_now = global_fg_chip->cl.init_cc_uah;
+	rc =  fg_get_charge_raw(global_fg_chip, &charge_now_raw);
+
+	snprintf(reg_value, MAX_SIZE, "%-15d %-17lld %-11d %-17lld %-10d %-15d %-14d %-17d %-14lld %-14lld %-13lld %-17d ",
+			 batt_esr,final_cc_uah, batt_soc,
+			learned_cc_uah, batt_id, resistance, cycle_count,
+			cycle_count_id, full_design, charge_full, charge_now,charge_now_raw);
+
+	/* add the four base reg item, the head is reg address */
+	//get_fuelguage_register_info(reg_value, global_fg_chip->batt_soc_base,
+		//	DUMP_FG_SOC, sizeof(DUMP_FG_SOC));
+	//get_fuelguage_register_info(reg_value, global_fg_chip->batt_info_base,
+			//DUMP_FG_BATT, sizeof(DUMP_FG_BATT));
+	//get_fuelguage_register_info(reg_value, global_fg_chip->mem_if_base,
+		//	DUMP_FG_MEMIF, sizeof(DUMP_FG_MEMIF));
+	//get_fuelguage_register_info(reg_value, global_fg_chip->rradc_base,
+		//	DUMP_REVID_TP_REV, sizeof(DUMP_REVID_TP_REV));
+}
+
+static void qpnp_get_fuelguage_register_head(char *reg_head)
+{
+	if (NULL == reg_head) {
+		pr_err("the reg_head is NULL\n");
+		return;
+	}
+
+	if (!global_fg_chip) {
+		pr_err("global_chip is not init ready\n");
+		return;
+	}
+
+	memset(reg_head, 0, CHARGELOG_SIZE);
+
+	/* add the fg headinfo,the head is chars */
+	snprintf(reg_head, MAX_SIZE, "     batt_esr    final_cc_uah    batt_soc    learned_cc_uah    batt_id    resistance    cycle_count    cycle_count_id    full_design    charge_full    charge_now    charge_now_raw    ");
+
+	/* add the reg address to headlog */
+	//get_fuelguage_register_head(reg_head, global_fg_chip->batt_soc_base,
+		//	DUMP_FG_SOC, sizeof(DUMP_FG_SOC));
+	//get_fuelguage_register_head(reg_head, global_fg_chip->batt_info_base,
+		//	DUMP_FG_BATT, sizeof(DUMP_FG_BATT));
+	//get_fuelguage_register_head(reg_head, global_fg_chip->mem_if_base,
+		//	DUMP_FG_MEMIF, sizeof(DUMP_FG_MEMIF));
+	//get_fuelguage_register_head(reg_head, global_fg_chip->rradc_base,
+		//	DUMP_REVID_TP_REV, sizeof(DUMP_REVID_TP_REV));
+}
+static int fg_get_chg_cycle_count(struct fg_chip *chip)
+{
+	int count = 0;
+	int id = 0;
+
+	if (!chip || !chip->cyc_ctr.en)
+		return 0;
+
+	if ((chip->cyc_ctr.id <= 0) || (chip->cyc_ctr.id > BUCKET_COUNT))
+		return -EINVAL;
+        mutex_lock(&chip->cyc_ctr.lock);
+	for (id = 0; id < BUCKET_COUNT; id++) {
+		count += chip->cyc_ctr.count[id];
+	}
+        mutex_unlock(&chip->cyc_ctr.lock);
+
+	/* just return 0 when battery data is loaded for first time */
+	if (fg_batt_profile_first_load && (0 == count)) {
+		return 0;
+	}
+
+	count /= BUCKET_COUNT;
+	if (!count)
+		count++;
+
+	return count;
+}
 static int fg_psy_get_property(struct power_supply *psy,
 				       enum power_supply_property psp,
 				       union power_supply_propval *pval)
@@ -3422,6 +3669,9 @@ static int fg_psy_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CYCLE_COUNT_ID:
 		pval->intval = chip->cyc_ctr.id;
 		break;
+	case POWER_SUPPLY_PROP_UPDATE_NOW:
+		pval->intval = 0;
+		break;
 	case POWER_SUPPLY_PROP_CHARGE_NOW_RAW:
 		rc = fg_get_charge_raw(chip, &pval->intval);
 		break;
@@ -3460,8 +3710,32 @@ static int fg_psy_get_property(struct power_supply *psy,
 			return -EINVAL;
 		}
 		break;
+	case POWER_SUPPLY_PROP_PROFILE_STATUS:
+		pval->intval = chip->profile_loaded;
+		break;
 	case POWER_SUPPLY_PROP_CC_STEP_SEL:
 		pval->intval = chip->ttf.cc_step.sel;
+		break;
+	case POWER_SUPPLY_PROP_REGISTER_HEAD:
+		qpnp_get_fuelguage_register_head((char *)pval->strval);
+		break;
+	case POWER_SUPPLY_PROP_DUMP_REGISTER:
+		qpnp_fuelguage_dump_register((char *)pval->strval);
+		break;
+	case POWER_SUPPLY_PROP_CHG_CYCLE_COUNT:
+		pval->intval = fg_get_chg_cycle_count(chip);
+		break;
+	case POWER_SUPPLY_PROP_RESET_LEARNED_CC:
+		pval->intval = 0;
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+		if (is_charger_available(chip)) {
+			return chip->batt_psy->desc->get_property(chip->batt_psy,
+					POWER_SUPPLY_PROP_VOLTAGE_MAX, pval);
+		} else {
+
+			pval->intval = chip->bp.float_volt_uv/UV_TO_MV;
+		}
 		break;
 	default:
 		pr_err("unsupported property %d\n", psp);
@@ -3475,6 +3749,7 @@ static int fg_psy_get_property(struct power_supply *psy,
 	return 0;
 }
 
+#define CC_CV_DELTA_MV 10
 static int fg_psy_set_property(struct power_supply *psy,
 				  enum power_supply_property psp,
 				  const union power_supply_propval *pval)
@@ -3521,6 +3796,22 @@ static int fg_psy_set_property(struct power_supply *psy,
 			return -EINVAL;
 		}
 		break;
+	case POWER_SUPPLY_PROP_UPDATE_NOW:
+		break;
+	case POWER_SUPPLY_PROP_RESET_LEARNED_CC:
+		fg_reset_learned_cc(chip, pval->intval);
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+		chip->bp.vbatt_full_mv = pval->intval - CC_CV_DELTA_MV;
+			if (chip->bp.vbatt_full_mv > 0) 
+				rc = fg_set_constant_chg_voltage(chip,chip->bp.vbatt_full_mv * UV_TO_MV);
+
+		//update_cc_cv_setpoint(chip);
+		if (is_charger_available(chip)) {
+			chip->batt_psy->desc->set_property(chip->batt_psy,
+						POWER_SUPPLY_PROP_VOLTAGE_BASP, pval);
+		}
+		break;
 	default:
 		break;
 	}
@@ -3536,6 +3827,8 @@ static int fg_property_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE:
 	case POWER_SUPPLY_PROP_CC_STEP:
 	case POWER_SUPPLY_PROP_CC_STEP_SEL:
+	case POWER_SUPPLY_PROP_RESET_LEARNED_CC:
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		return 1;
 	default:
 		break;
@@ -3562,7 +3855,8 @@ static int fg_notifier_cb(struct notifier_block *nb,
 		return NOTIFY_OK;
 
 	if ((strcmp(psy->desc->name, "battery") == 0)
-		|| (strcmp(psy->desc->name, "usb") == 0)) {
+		|| (strcmp(psy->desc->name, "usb") == 0)
+		|| (strcmp(psy->desc->name, "bk_battery") == 0)) {
 		/*
 		 * We cannot vote for awake votable here as that takes
 		 * a mutex lock and this is executed in an atomic context.
@@ -3599,6 +3893,10 @@ static enum power_supply_property fg_psy_props[] = {
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE,
 	POWER_SUPPLY_PROP_CC_STEP,
 	POWER_SUPPLY_PROP_CC_STEP_SEL,
+	POWER_SUPPLY_PROP_PROFILE_STATUS,
+	POWER_SUPPLY_PROP_CHG_CYCLE_COUNT,
+	POWER_SUPPLY_PROP_RESET_LEARNED_CC,
+	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 };
 
 static const struct power_supply_desc fg_psy_desc = {
@@ -3778,6 +4076,7 @@ static int fg_hw_init(struct fg_chip *chip)
 	}
 
 	get_temp_setpoint(chip->dt.jeita_thresholds[JEITA_HOT], &val);
+	pr_err("chip->dt.jeita_thresholds[JEITA_HOT = %d\n",val);
 	rc = fg_write(chip, BATT_INFO_JEITA_TOO_HOT(chip), &val, 1);
 	if (rc < 0) {
 		pr_err("Error in writing jeita_hot, rc=%d\n", rc);
@@ -4376,11 +4675,11 @@ static int fg_parse_ki_coefficients(struct fg_chip *chip)
 }
 
 #define DEFAULT_CUTOFF_VOLT_MV		3200
-#define DEFAULT_EMPTY_VOLT_MV		2850
+#define DEFAULT_EMPTY_VOLT_MV		3000
 #define DEFAULT_RECHARGE_VOLT_MV	4250
 #define DEFAULT_CHG_TERM_CURR_MA	100
 #define DEFAULT_CHG_TERM_BASE_CURR_MA	75
-#define DEFAULT_SYS_TERM_CURR_MA	-125
+#define DEFAULT_SYS_TERM_CURR_MA	-200
 #define DEFAULT_DELTA_SOC_THR		1
 #define DEFAULT_RECHARGE_SOC_THR	95
 #define DEFAULT_BATT_TEMP_COLD		0
@@ -4404,6 +4703,12 @@ static int fg_parse_ki_coefficients(struct fg_chip *chip)
 #define DEFAULT_ESR_CLAMP_MOHMS		20
 #define DEFAULT_ESR_PULSE_THRESH_MA	110
 #define DEFAULT_ESR_MEAS_CURR_MA	120
+#ifdef CONFIG_HLTHERM_RUNTEST
+#define HLTHERM_BATT_TEMP_HOT      60
+#define HLTHERM_BATT_TEMP_COLD		-20
+#endif
+
+
 static int fg_parse_dt(struct fg_chip *chip)
 {
 	struct device_node *child, *revid_node, *node = chip->dev->of_node;
@@ -4534,7 +4839,7 @@ static int fg_parse_dt(struct fg_chip *chip)
 	if (rc < 0)
 		chip->dt.sys_term_curr_ma = DEFAULT_SYS_TERM_CURR_MA;
 	else
-		chip->dt.sys_term_curr_ma = temp;
+		chip->dt.sys_term_curr_ma = DEFAULT_SYS_TERM_CURR_MA;
 
 	rc = of_property_read_u32(node, "qcom,fg-chg-term-base-current", &temp);
 	if (rc < 0)
@@ -4582,6 +4887,12 @@ static int fg_parse_dt(struct fg_chip *chip)
 			pr_warn("Error reading Jeita thresholds, default values will be used rc:%d\n",
 				rc);
 	}
+#ifdef CONFIG_HLTHERM_RUNTEST
+chip->dt.jeita_thresholds[JEITA_COLD] = HLTHERM_BATT_TEMP_COLD;
+chip->dt.jeita_thresholds[JEITA_HOT] = HLTHERM_BATT_TEMP_HOT;
+#endif
+
+	pr_info("therm %d %d %d %d\n",chip->dt.jeita_thresholds[JEITA_COLD],chip->dt.jeita_thresholds[JEITA_COOL],chip->dt.jeita_thresholds[JEITA_WARM],chip->dt.jeita_thresholds[JEITA_HOT]);
 
 	if (of_property_count_elems_of_size(node,
 		"qcom,battery-thermal-coefficients",
@@ -4751,6 +5062,12 @@ static int fg_parse_dt(struct fg_chip *chip)
 		if (temp >= 60 || temp <= 240)
 			chip->dt.esr_meas_curr_ma = temp;
 	}
+	rc = of_property_read_u32(node, "qcom,vbat-estimate-diff-mv", &temp);
+	if (rc < 0)
+		chip->dt.vbattestdiff = 100;//100mv is the diff mv
+	else
+		chip->dt.vbattestdiff= temp;
+
 
 	return 0;
 }
@@ -4944,6 +5261,7 @@ static int fg_gen3_probe(struct platform_device *pdev)
 
 	device_init_wakeup(chip->dev, true);
 	schedule_delayed_work(&chip->profile_load_work, 0);
+	global_fg_chip = chip;
 
 	pr_debug("FG GEN3 driver probed successfully\n");
 	return 0;

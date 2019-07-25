@@ -55,6 +55,10 @@
 #include <asm/processor.h>
 #include <asm/stacktrace.h>
 
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+#include <linux/rainbow_reset_detect_api.h>
+#endif
+
 #ifdef CONFIG_CC_STACKPROTECTOR
 #include <linux/stackprotector.h>
 unsigned long __stack_chk_guard __read_mostly;
@@ -225,12 +229,18 @@ static void show_data(unsigned long addr, int nbytes, const char *name)
 static void show_extra_register_data(struct pt_regs *regs, int nbytes)
 {
 	mm_segment_t fs;
+	unsigned int i;
+	char name[4];
 
 	fs = get_fs();
 	set_fs(KERNEL_DS);
 	show_data(regs->pc - nbytes, nbytes * 2, "PC");
 	show_data(regs->regs[30] - nbytes, nbytes * 2, "LR");
 	show_data(regs->sp - nbytes, nbytes * 2, "SP");
+	for (i = 0;i < 30; i++) {
+		snprintf(name,sizeof(name),"X%u", i);
+		show_data(regs->regs[i] - nbytes, nbytes * 2,name);
+	}
 	set_fs(fs);
 }
 
@@ -251,6 +261,9 @@ void __show_regs(struct pt_regs *regs)
 
 	show_regs_print_info(KERN_DEFAULT);
 	print_symbol("PC is at %s\n", instruction_pointer(regs));
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+//	rainbow_reset_detect_reason_info_regs_kallsyms_set("PC is at %s",instruction_pointer(regs));
+#endif
 	print_symbol("LR is at %s\n", lr);
 	printk("pc : [<%016llx>] lr : [<%016llx>] pstate: %08llx\n",
 	       regs->pc, lr, regs->pstate);

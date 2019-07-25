@@ -90,6 +90,8 @@ static ssize_t power_supply_show_property(struct device *dev,
 
 	if (off == POWER_SUPPLY_PROP_TYPE) {
 		value.intval = psy->desc->type;
+		if(psy->desc->type == POWER_SUPPLY_TYPE_USB_PD)
+			ret = power_supply_get_property(psy, off, &value);
 	} else {
 		ret = power_supply_get_property(psy, off, &value);
 
@@ -305,6 +307,25 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(pd_voltage_max),
 	POWER_SUPPLY_ATTR(pd_voltage_min),
 	POWER_SUPPLY_ATTR(sdp_current_max),
+	POWER_SUPPLY_ATTR(charge_enabled),
+	POWER_SUPPLY_ATTR(profile_status),
+	POWER_SUPPLY_ATTR(in_thermal),
+	POWER_SUPPLY_ATTR(charger_ovp),
+	POWER_SUPPLY_ATTR(register_head),
+	POWER_SUPPLY_ATTR(dump_register),
+	POWER_SUPPLY_ATTR(allow_hvdcp),
+	POWER_SUPPLY_ATTR(hiz_mode),
+	POWER_SUPPLY_ATTR(chg_cycle_count),
+	POWER_SUPPLY_ATTR(reset_learned_cc),
+	POWER_SUPPLY_ATTR(cc_cv),
+	POWER_SUPPLY_ATTR(chg_iterm),
+	POWER_SUPPLY_ATTR(charger_present),
+	POWER_SUPPLY_ATTR(factory_diag),
+	POWER_SUPPLY_ATTR(voltage_basp),
+	POWER_SUPPLY_ATTR(profile_id),
+	POWER_SUPPLY_ATTR(fcp_status),
+	POWER_SUPPLY_ATTR(scp_status),
+	POWER_SUPPLY_ATTR(adaptor_voltage),
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_ATTR(charge_counter_ext),
 	/* Properties of type `const char *' */
@@ -312,6 +333,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(manufacturer),
 	POWER_SUPPLY_ATTR(serial_number),
 	POWER_SUPPLY_ATTR(battery_type),
+	POWER_SUPPLY_ATTR(release_wakelock),
 };
 
 static struct attribute *

@@ -94,10 +94,17 @@
 #include "../smpboot.h"
 #include "../time/tick-internal.h"
 
+#ifdef CONFIG_SRECORDER
+#include <linux/srecorder.h>
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 
 ATOMIC_NOTIFIER_HEAD(load_alert_notifier_head);
+#ifdef CONFIG_HW_VIP_THREAD
+#include <chipset_common/hwcfs/hwcfs_common.h>
+#endif
 
 DEFINE_MUTEX(sched_domains_mutex);
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
@@ -2944,7 +2951,11 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	 */
 	lockdep_unpin_lock(&rq->lock);
 	spin_release(&rq->lock.dep_map, 1, _THIS_IP_);
-
+#ifdef CONFIG_SRECORDER
+#ifdef CONFIG_MINIDUMP_TRACE_INFO
+	minidump_task_trace_write((void *)next);
+#endif
+#endif
 	/* Here we just switch the register state and the stack. */
 	switch_to(prev, next, prev);
 	barrier();
@@ -3263,7 +3274,9 @@ void scheduler_tick(void)
 	trigger_load_balance(rq);
 #endif
 	rq_last_tick_reset(rq);
-
+#ifdef CONFIG_HW_VIP_THREAD
+	trigger_vip_balance(rq);
+#endif
 	rcu_read_lock();
 	grp = task_related_thread_group(curr);
 	if (update_preferred_cluster(grp, curr, old_load))
@@ -3569,6 +3582,10 @@ static void __sched notrace __schedule(bool preempt)
 
 	if (task_on_rq_queued(prev))
 		update_rq_clock(rq);
+
+#ifdef CONFIG_HW_VIP_THREAD
+	prev->enqueue_time = rq->clock;
+#endif
 
 	next = pick_next_task(rq, prev);
 	clear_tsk_need_resched(prev);
@@ -8397,6 +8414,9 @@ void __init sched_init(void)
 		init_cfs_rq(&rq->cfs);
 		init_rt_rq(&rq->rt);
 		init_dl_rq(&rq->dl);
+#ifdef CONFIG_HW_VIP_THREAD
+		vip_init_rq_data(rq);
+#endif
 #ifdef CONFIG_FAIR_GROUP_SCHED
 		root_task_group.shares = ROOT_TASK_GROUP_LOAD;
 		INIT_LIST_HEAD(&rq->leaf_cfs_rq_list);

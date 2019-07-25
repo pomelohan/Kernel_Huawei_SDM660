@@ -116,6 +116,7 @@ enum msm_sensor_power_seq_gpio_t {
 	SENSOR_GPIO_CUSTOM1,
 	SENSOR_GPIO_CUSTOM2,
 	SENSOR_GPIO_CUSTOM3,
+	SENSOR_GPIO_CAM_ID,
 	SENSOR_GPIO_MAX,
 };
 #define SENSOR_GPIO_CUSTOM3 SENSOR_GPIO_CUSTOM3
@@ -253,6 +254,7 @@ enum msm_camera_i2c_operation {
 	MSM_CAM_WRITE = 0,
 	MSM_CAM_POLL,
 	MSM_CAM_READ,
+	MSM_CAM_SINGLE_LOOP_READ,
 };
 
 struct msm_sensor_i2c_sync_params {
@@ -298,6 +300,35 @@ struct msm_sensor_id_info_t {
 	unsigned short sensor_id_mask;
 };
 
+enum dump_reg_operation {
+  MSM_DUMP_REG_READ = 0,
+  MSM_DUMP_REG_WRITE,
+};
+
+struct dump_reg_info_t {
+	unsigned short addr;
+	unsigned short value;
+	enum dump_reg_operation operation_type;
+	enum msm_camera_i2c_data_type data_type;
+};
+typedef enum  msm_moudle_id_types{
+	MSM_MODULE_ID_PULL_DOWN,
+	MSM_MODULE_ID_PULL_UP,
+	MSM_MODULE_ID_PULL_NC,
+	MSM_MODULE_ID_INVALID
+} msm_moudle_id_types_t;
+
+typedef struct msm_module_id_info {
+	msm_moudle_id_types_t module_id;
+	unsigned short vendor_id_support;
+	unsigned short vendor_id_i2c_addr;
+	enum msm_camera_i2c_reg_addr_type  vendor_id_reg_addr_type;
+	unsigned int vendor_id_reg_addr;
+	enum msm_camera_i2c_data_type vendor_id_data_type;
+	unsigned short vendor_id;
+	unsigned short vendor_id_mask;
+}msm_module_id_info_t;
+
 struct msm_camera_sensor_slave_info {
 	char sensor_name[32];
 	char eeprom_name[32];
@@ -314,6 +345,9 @@ struct msm_camera_sensor_slave_info {
 	struct msm_sensor_init_params sensor_init_params;
 	enum msm_sensor_output_format_t output_format;
 	uint8_t bypass_video_node_creation;
+	struct dump_reg_info_t dump_reg_info[30];
+	unsigned short dump_reg_num;
+	msm_module_id_info_t module_id_info;
 };
 
 struct msm_camera_i2c_reg_array {

@@ -40,6 +40,8 @@
 #define CF_MIN_3DB_75HZ			0x1
 #define CF_MIN_3DB_150HZ		0x2
 
+extern void hw_get_registered_codec(struct snd_soc_codec *codec, bool is_digital_codec);
+
 #define MSM_DIG_CDC_VERSION_ENTRY_SIZE 32
 
 static unsigned long rx_digital_gain_reg[] = {
@@ -1312,6 +1314,9 @@ static int msm_dig_cdc_soc_probe(struct snd_soc_codec *codec)
 	snd_soc_dapm_ignore_suspend(dapm, "PDM_OUT_RX2");
 	snd_soc_dapm_ignore_suspend(dapm, "PDM_OUT_RX3");
 
+	/*set codec , 0 = analog codec, 1 = digital codec*/
+	hw_get_registered_codec(codec, 1);
+
 	snd_soc_dapm_sync(dapm);
 
 	return 0;
@@ -1401,6 +1406,9 @@ static const struct snd_soc_dapm_route audio_dig_map[] = {
 	{"RX2 MIX1 INP2", "RX3", "I2S RX3"},
 	{"RX2 MIX1 INP2", "IIR1", "IIR1"},
 	{"RX2 MIX1 INP2", "IIR2", "IIR2"},
+	{"RX2 MIX1 INP3", "RX1", "I2S RX1"},
+	{"RX2 MIX1 INP3", "RX2", "I2S RX2"},
+	{"RX2 MIX1 INP3", "RX3", "I2S RX3"},
 
 	{"RX3 MIX1 INP1", "RX1", "I2S RX1"},
 	{"RX3 MIX1 INP1", "RX2", "I2S RX2"},
@@ -1412,6 +1420,9 @@ static const struct snd_soc_dapm_route audio_dig_map[] = {
 	{"RX3 MIX1 INP2", "RX3", "I2S RX3"},
 	{"RX3 MIX1 INP2", "IIR1", "IIR1"},
 	{"RX3 MIX1 INP2", "IIR2", "IIR2"},
+	{"RX3 MIX1 INP3", "RX1", "I2S RX1"},
+	{"RX3 MIX1 INP3", "RX2", "I2S RX2"},
+	{"RX3 MIX1 INP3", "RX3", "I2S RX3"},
 
 	{"RX1 MIX2 INP1", "IIR1", "IIR1"},
 	{"RX2 MIX2 INP1", "IIR1", "IIR1"},

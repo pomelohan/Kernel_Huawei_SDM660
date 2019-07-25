@@ -45,7 +45,9 @@
 #include <linux/kernel.h>
 #include <linux/bug.h>
 #include <linux/sched.h>
-
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+#include <linux/rainbow_reset_detect_api.h>
+#endif
 extern const struct bug_entry __start___bug_table[], __stop___bug_table[];
 
 static inline unsigned long bug_addr(const struct bug_entry *bug)
@@ -186,10 +188,24 @@ enum bug_trap_type report_bug(unsigned long bugaddr, struct pt_regs *regs)
 	printk(KERN_DEFAULT "------------[ cut here ]------------\n");
 
 	if (file)
+	{
 		pr_crit("kernel BUG at %s:%u!\n", file, line);
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+		rainbow_reset_detect_s_reason_set(FD_S_APANIC_BUG);
+		rainbow_reset_detect_s_reason_str_set("Trigger_BUG_macro");
+		rainbow_reset_detect_reason_info_str_set_format("BUG at %s:%u!",file, line);
+#endif
+	}
 	else
+	{
 		pr_crit("Kernel BUG at %p [verbose debug info unavailable]\n",
 			(void *)bugaddr);
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+		rainbow_reset_detect_s_reason_set(FD_S_APANIC_BUG);
+		rainbow_reset_detect_s_reason_str_set("Trigger_BUG_macro");
+		rainbow_reset_detect_reason_info_str_set_format("BUG unavailable at %p!",(void *)bugaddr);
+#endif
+	}
 
 	return BUG_TRAP_TYPE_BUG;
 }

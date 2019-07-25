@@ -556,11 +556,14 @@ static void cmdq_reset(struct mmc_host *mmc, bool soft)
 	mmc_host_clr_cq_disable(mmc);
 }
 
+extern void mmc_start_cmdq_request_rwlog(struct mmc_request *mrq, u32 req_flags);
 static void cmdq_prep_task_desc(struct mmc_request *mrq,
 					u64 *data, bool intr, bool qbr)
 {
 	struct mmc_cmdq_req *cmdq_req = mrq->cmdq_req;
 	u32 req_flags = cmdq_req->cmdq_req_flags;
+
+	mmc_start_cmdq_request_rwlog(mrq,req_flags);
 
 	pr_debug("%s: %s: data-tag: 0x%08x - dir: %d - prio: %d - cnt: 0x%08x -	addr: 0x%llx\n",
 		 mmc_hostname(mrq->host), __func__,
@@ -687,6 +690,7 @@ static void cmdq_log_task_desc_history(struct cmdq_host *cq_host, u64 task,
 		&task, cq_host->task_desc_len);
 }
 
+extern void mmc_start_dcmd_request_rwlog(struct mmc_request *mrq);
 static void cmdq_prep_dcmd_desc(struct mmc_host *mmc,
 				   struct mmc_request *mrq)
 {
@@ -710,6 +714,8 @@ static void cmdq_prep_dcmd_desc(struct mmc_host *mmc,
 			timing = 0x1;
 		}
 	}
+
+	mmc_start_dcmd_request_rwlog(mrq);
 
 	task_desc = (__le64 __force *)get_desc(cq_host, cq_host->dcmd_slot);
 	memset(task_desc, 0, cq_host->task_desc_len);

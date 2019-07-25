@@ -36,6 +36,10 @@
 #include <linux/ftrace.h>
 #include <linux/ratelimit.h>
 
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+#include <linux/rainbow_reset_detect_api.h>
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/oom.h>
 
@@ -721,6 +725,10 @@ bool out_of_memory(struct oom_control *oc)
 	p = select_bad_process(oc, &points, totalpages);
 	/* Found nothing?!?! Either we hang forever, or we panic. */
 	if (!p && !is_sysrq_oom(oc)) {
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+        rainbow_reset_detect_s_reason_set(FD_S_APANIC_OUT_OF_MEMORY);
+		rainbow_reset_detect_s_reason_str_set("Out_of_memory");
+#endif
 		dump_header(oc, NULL, NULL);
 		panic("Out of memory and no killable processes...\n");
 	}

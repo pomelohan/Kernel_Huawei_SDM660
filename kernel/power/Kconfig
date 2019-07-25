@@ -321,3 +321,8 @@ config PM_GENERIC_DOMAINS_OF
 
 config CPU_PM
 	bool
+
+config HW_SYS_SYNC
+	bool "Asynchronous sync"
+	depends on SUSPEND
+	default n

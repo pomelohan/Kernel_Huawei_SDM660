@@ -1,0 +1,7 @@
+config HUAWEI_PMU_DSM
+	bool "huawei dsm charger"
+	depends on HUAWEI_DSM
+config HUAWEI_BATT
+	bool "huawei batt"
+config HUAWEI_BATT2
+	bool "huawei batt 2"

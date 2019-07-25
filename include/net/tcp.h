@@ -288,6 +288,9 @@ extern int sysctl_tcp_invalid_ratelimit;
 extern int sysctl_tcp_pacing_ss_ratio;
 extern int sysctl_tcp_pacing_ca_ratio;
 extern int sysctl_tcp_default_init_rwnd;
+#ifdef CONFIG_TCP_AUTOTUNING
+extern int sysctl_tcp_autotuning;
+#endif
 
 extern atomic_long_t tcp_memory_allocated;
 
@@ -297,6 +300,9 @@ extern int sysctl_tcp_use_userconfig;
 
 extern struct percpu_counter tcp_sockets_allocated;
 extern int tcp_memory_pressure;
+#ifdef CONFIG_TCP_NODELAY
+extern int sysctl_tcp_nodelay;
+#endif
 
 /* optimized version of sk_under_memory_pressure() for TCP sockets */
 static inline bool tcp_under_memory_pressure(const struct sock *sk)
@@ -356,6 +362,13 @@ extern struct proto tcp_prot;
 #define TCP_DEC_STATS(net, field)	SNMP_DEC_STATS((net)->mib.tcp_statistics, field)
 #define TCP_ADD_STATS_USER(net, field, val) SNMP_ADD_STATS_USER((net)->mib.tcp_statistics, field, val)
 #define TCP_ADD_STATS(net, field, val)	SNMP_ADD_STATS((net)->mib.tcp_statistics, field, val)
+#ifdef CONFIG_HW_WIFIPRO
+#define WIFIPRO_TCP_INC_STATS(net, field)	SNMP_INC_STATS((net)->mib.wifipro_tcp_statistics, field)
+#define WIFIPRO_TCP_INC_STATS_BH(net, field)	SNMP_INC_STATS_BH((net)->mib.wifipro_tcp_statistics, field)
+#define WIFIPRO_TCP_DEC_STATS(net, field)	SNMP_DEC_STATS((net)->mib.wifipro_tcp_statistics, field)
+#define WIFIPRO_TCP_ADD_STATS_USER(net, field, val) SNMP_ADD_STATS_USER((net)->mib.wifipro_tcp_statistics, field, val)
+#define WIFIPRO_TCP_ADD_STATS(net, field, val)	SNMP_ADD_STATS((net)->mib.wifipro_tcp_statistics, field, val)
+#endif
 
 void tcp_tasklet_init(void);
 

@@ -1926,7 +1926,7 @@ static int dwc3_gadget_vbus_draw(struct usb_gadget *g, unsigned mA)
 	struct dwc3		*dwc = gadget_to_dwc(g);
 
 	dwc->vbus_draw = mA;
-	dev_dbg(dwc->dev, "Notify controller from %s. mA = %d\n", __func__, mA);
+	dev_err(dwc->dev, "Notify controller from %s. mA = %d\n", __func__, mA);
 	dwc3_notify_event(dwc, DWC3_CONTROLLER_SET_CURRENT_DRAW_EVENT, 0);
 	return 0;
 }
@@ -2046,7 +2046,7 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *_gadget, int is_active)
 	 * Make sure to let gadget driver know in that case.
 	 */
 	if (!dwc->vbus_active) {
-		dev_dbg(dwc->dev, "calling disconnect from %s\n", __func__);
+		dev_err(dwc->dev, "calling disconnect from %s\n", __func__);
 		dwc3_gadget_disconnect_interrupt(dwc);
 	}
 

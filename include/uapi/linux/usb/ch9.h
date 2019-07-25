@@ -783,6 +783,7 @@ struct usb_dev_cap_header {
 	__u8  bDevCapabilityType;
 } __attribute__((packed));
 
+#define USB_DT_INTERFACE_ASSOCIATION_SIZE	8
 #define	USB_CAP_TYPE_WIRELESS_USB	1
 
 struct usb_wireless_cap_descriptor {	/* Ultra Wide Band */

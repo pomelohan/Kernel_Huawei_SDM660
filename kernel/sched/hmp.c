@@ -2880,11 +2880,14 @@ void update_task_ravg(struct task_struct *p, struct rq *rq, int event,
 		update_task_burst(p, rq, event, runtime);
 	update_cpu_busy_time(p, rq, event, wallclock, irqtime);
 	update_task_pred_demand(rq, p, event);
-done:
+
+    if (exiting_task(p))
+        goto done;
+
 	trace_sched_update_task_ravg(p, rq, event, wallclock, irqtime,
 				     rq->cc.cycles, rq->cc.time,
 				     p->grp ? &rq->grp_time : NULL);
-
+done:
 	p->ravg.mark_start = wallclock;
 }
 

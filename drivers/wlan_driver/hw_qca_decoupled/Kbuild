@@ -1,0 +1,5 @@
+############ HDD ############
+HDD_INC += -I$(WLAN_ROOT)/hw_qca_decoupled/core/hdd/inc \
+           -I$(WLAN_ROOT)/hw_qca_decoupled/core/hdd/src
+HDD_OBJS += hw_qca_decoupled/core/hdd/src/hdd_auto_config_ini.o
+

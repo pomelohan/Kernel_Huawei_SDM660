@@ -16,6 +16,8 @@
 #define MAX_SENSOR_NAME 32
 #define MAX_ACTUATOR_AF_TOTAL_STEPS 1024
 
+#define MAX_SENSOR_NAME_64 64
+
 #define MAX_OIS_MOD_NAME_SIZE 32
 #define MAX_OIS_NAME_SIZE 32
 #define MAX_OIS_REG_SETTINGS 800
@@ -263,9 +265,14 @@ enum eeprom_cfg_type_t {
 	CFG_EEPROM_GET_INFO,
 	CFG_EEPROM_GET_CAL_DATA,
 	CFG_EEPROM_READ_CAL_DATA,
-	CFG_EEPROM_WRITE_DATA,
+	//CFG_EEPROM_WRITE_DATA,
 	CFG_EEPROM_GET_MM_INFO,
 	CFG_EEPROM_INIT,
+	CFG_EEPROM_POWER_UP,
+	CFG_EEPROM_POWER_DOWN,
+	CFG_EEPROM_WRITE_DATA,
+	CFG_EEPROM_READ_DATA,
+	CFG_EEPROM_FRESH_MEM_DATA,
 };
 
 struct eeprom_get_t {
@@ -288,10 +295,20 @@ struct eeprom_get_cmm_t {
 	uint32_t cmm_size;
 };
 
+struct msm_eeprom_control_t {
+	uint16_t slave_addr;
+	uint16_t reg_addr;
+	enum msm_camera_i2c_reg_addr_type i2c_addr_type;
+	uint8_t * dbuffer;
+	enum msm_camera_i2c_data_type i2c_data_type;
+	uint32_t num_bytes;
+	uint32_t write_byte_delay_ms;
+};
 struct msm_eeprom_info_t {
 	struct msm_sensor_power_setting_array *power_setting_array;
 	enum i2c_freq_mode_t i2c_freq_mode;
 	struct msm_eeprom_memory_map_array *mem_map_array;
+	struct msm_eeprom_control_t *eeprom_control;
 };
 
 struct msm_ir_led_cfg_data_t {
@@ -326,6 +343,22 @@ struct msm_eeprom_cfg_data {
 	} cfg;
 };
 
+#ifndef MAX_SUPPORT_SENSOR_COUNT
+#define MAX_SUPPORT_SENSOR_COUNT 3
+#endif
+#ifndef APP_INFO_MAX_LINE_LEN
+#define APP_INFO_MAX_LINE_LEN 128
+#endif
+
+struct msm_support_product_name_info {
+	char product_name_info[MAX_SUPPORT_SENSOR_COUNT][APP_INFO_MAX_LINE_LEN];
+};
+
+#define CUSTOM_CFG_MSM_SENSOR \
+		CFG_START_FRM_CNT, \
+		CFG_STOP_FRM_CNT, \
+		CFG_CUSTOM_MAX
+
 enum msm_sensor_cfg_type_t {
 	CFG_SET_SLAVE_INFO,
 	CFG_SLAVE_READ_I2C,
@@ -357,6 +390,7 @@ enum msm_sensor_cfg_type_t {
 	CFG_WRITE_I2C_ARRAY_ASYNC,
 	CFG_WRITE_I2C_ARRAY_SYNC,
 	CFG_WRITE_I2C_ARRAY_SYNC_BLOCK,
+	CUSTOM_CFG_MSM_SENSOR,
 };
 
 enum msm_actuator_cfg_type_t {
@@ -571,6 +605,23 @@ enum msm_sensor_init_cfg_type_t {
 	CFG_SINIT_PROBE,
 	CFG_SINIT_PROBE_DONE,
 	CFG_SINIT_PROBE_WAIT_DONE,
+	CFG_SINIT_GET_PRODUCT_NAME,
+	CFG_SINIT_SET_SENSOR_NAME,
+};
+
+enum hw_sensor_pos_t {
+	HW_BACK_CAMERA,
+	HW_FRONT_CAMERA,
+	HW_MAX_CAMERA,
+};
+
+struct hw_camera_app_info_t {
+	char	camera_name[MAX_SENSOR_NAME_64];
+	char	label[MAX_SENSOR_NAME_64];
+};
+
+struct hw_camera_app_info_array_t {
+	struct hw_camera_app_info_t app_info[HW_MAX_CAMERA];
 };
 
 struct sensor_init_cfg_data {

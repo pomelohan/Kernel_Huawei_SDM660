@@ -65,7 +65,7 @@
  * A single 'zspage' is composed of up to 2^N discontiguous 0-order (single)
  * pages. ZS_MAX_ZSPAGE_ORDER defines upper limit on N.
  */
-#define ZS_MAX_ZSPAGE_ORDER 2
+#define ZS_MAX_ZSPAGE_ORDER 3
 #define ZS_MAX_PAGES_PER_ZSPAGE (_AC(1, UL) << ZS_MAX_ZSPAGE_ORDER)
 
 #define ZS_HANDLE_SIZE (sizeof(unsigned long))
@@ -1969,6 +1969,7 @@ bool zs_page_isolate(struct page *page, isolate_mode_t mode)
 	struct zspage *zspage;
 	struct address_space *mapping;
 
+	return false;
 	/*
 	 * Page is locked so zspage couldn't be destroyed. For detail, look at
 	 * lock_zspage in free_zspage.

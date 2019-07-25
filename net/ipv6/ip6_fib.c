@@ -1564,6 +1564,9 @@ skip:
 				return 0;
 			pn = fn->parent;
 			w->node = pn;
+			if(!pn) {
+				return 0;
+			}
 #ifdef CONFIG_IPV6_SUBTREES
 			if (FIB6_SUBTREE(pn) == fn) {
 				WARN_ON(!(fn->fn_flags & RTN_ROOT));

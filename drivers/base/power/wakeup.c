@@ -20,6 +20,14 @@
 
 #include "power.h"
 
+#ifdef CONFIG_HUAWEI_SLEEPLOG
+#include <linux/proc_fs.h>
+#endif
+
+#ifdef CONFIG_HUAWEI_DUBAI
+#include <huawei_platform/log/hwlog_kernel.h>
+#endif
+
 /*
  * If set, the suspend/hibernate code will abort transitions to a sleep state
  * if wakeup events are registered during or immediately before the transition.
@@ -835,6 +843,9 @@ void pm_get_active_wakeup_sources(char *pending_wakeup_source, size_t max)
 		scnprintf(pending_wakeup_source, max,
 				"Last active Wakeup Source: %s",
 				last_active_ws->name);
+#ifdef CONFIG_HUAWEI_DUBAI
+	    HWDUBAI_LOGE("DUBAI_TAG_FREEZING_FAILED", "name=%s", last_active_ws->name);
+#endif
 	}
 	rcu_read_unlock();
 }
@@ -1058,7 +1069,50 @@ static int print_wakeup_source_stats(struct seq_file *m,
 
 	return 0;
 }
+static int print_active_wakeup_source(struct seq_file *m, struct wakeup_source *ws)
+{
+	unsigned long flags;
+	ktime_t total_time;
+	ktime_t max_time;
+	unsigned long active_count;
+	ktime_t active_time;
+	ktime_t prevent_sleep_time;
 
+	spin_lock_irqsave(&ws->lock, flags);
+
+	total_time = ws->total_time;
+	max_time = ws->max_time;
+	prevent_sleep_time = ws->prevent_sleep_time;
+	active_count = ws->active_count;
+	if (ws->active) {
+		ktime_t now = ktime_get();
+
+		active_time = ktime_sub(now, ws->last_time);
+		total_time = ktime_add(total_time, active_time);
+		if (active_time.tv64 > max_time.tv64)
+			max_time = active_time;
+
+		if (ws->autosleep_enabled)
+			prevent_sleep_time = ktime_add(prevent_sleep_time,
+				ktime_sub(now, ws->start_prevent_time));
+	} else {
+		active_time = ktime_set(0, 0);
+	}
+	if(ws->active)
+	{
+		seq_printf(m, "Active resource: %-12s\t%lu\t\t%lu\t\t%lu\t\t%lu\t\t"
+				"%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\n",
+				ws->name, active_count, ws->event_count,
+				ws->wakeup_count, ws->expire_count,
+				ktime_to_ms(active_time), ktime_to_ms(total_time),
+				ktime_to_ms(max_time), ktime_to_ms(ws->last_time),
+				ktime_to_ms(prevent_sleep_time));
+    }
+
+	spin_unlock_irqrestore(&ws->lock, flags);
+
+	return 0;
+}
 /**
  * wakeup_sources_stats_show - Print wakeup sources statistics information.
  * @m: seq_file to print the statistics into.
@@ -1075,6 +1129,8 @@ static int wakeup_sources_stats_show(struct seq_file *m, void *unused)
 	srcuidx = srcu_read_lock(&wakeup_srcu);
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry)
 		print_wakeup_source_stats(m, ws);
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry)
+		print_active_wakeup_source(m, ws);
 	srcu_read_unlock(&wakeup_srcu, srcuidx);
 
 	print_wakeup_source_stats(m, &deleted_ws);
@@ -1103,3 +1159,13 @@ static int __init wakeup_sources_debugfs_init(void)
 }
 
 postcore_initcall(wakeup_sources_debugfs_init);
+
+#ifdef CONFIG_HUAWEI_SLEEPLOG
+static int __init wakeup_sources_proc_init(void)
+{
+    proc_create("wakeup_sources", S_IRUGO,
+        (struct proc_dir_entry *)NULL, &wakeup_sources_stats_fops);
+    return 0;
+}
+late_initcall(wakeup_sources_proc_init);
+#endif

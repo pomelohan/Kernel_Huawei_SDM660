@@ -466,4 +466,10 @@ config MIPS_EJTAG_FDC_KGDB_CHAN
 	help
 	  FDC channel number to use for KGDB.
 
+config HANDSET_SYSRQ_RESET
+         bool "Sysrq reset trigger by handset key pressing"
+         default n
+         help
+           This enables sysrq reset when volume down, up and power key are
+           pressed simultaneously.
 endif # TTY

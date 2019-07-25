@@ -141,7 +141,8 @@ static int os_lock_notify(struct notifier_block *self,
 				    unsigned long action, void *data)
 {
 	int cpu = (unsigned long)data;
-	if ((action & ~CPU_TASKS_FROZEN) == CPU_ONLINE)
+	action &= ~CPU_TASKS_FROZEN;
+	if (action == CPU_ONLINE || action == CPU_STARTING)
 		smp_call_function_single(cpu, clear_os_lock, NULL, 1);
 	return NOTIFY_OK;
 }

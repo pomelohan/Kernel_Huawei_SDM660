@@ -68,6 +68,13 @@ config SDIO_UART
 	  SDIO function driver for SDIO cards that implements the UART
 	  class, as well as the GPS class which appears like a UART.
 
+config HW_SD_HEALTH_DETECT
+	bool "SD HEALTH DIAG SUPPORT"
+	depends on MMC_BLOCK && HUAWEI_QCOM_MMC
+	default n
+	help
+	  This is an option to diag sd health status.
+
 config MMC_TEST
 	tristate "MMC host test driver"
 	help
@@ -91,3 +98,19 @@ config MMC_SIMULATE_MAX_SPEED
 	  control the write or read maximum KB/second speed behaviors.
 
 	  If unsure, say N here.
+
+config HW_EMMC_PROTECT_MODULE
+	tristate "EMMC write protect driver by Huawei"
+	depends on HW_SYSTEM_WR_PROTECT && HUAWEI_QCOM_MMC
+	default y
+	help
+	  This is for EMMC to write protect
+
+config MMC_FFU
+	bool "FFU SUPPORT"
+	depends on MMC != n
+	default n
+	help
+	  This is an option to run firmware update on eMMC 5.0.
+	  Field firmware updates (FFU) enables features enhancment
+	  in the field.

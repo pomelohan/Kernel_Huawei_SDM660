@@ -222,7 +222,10 @@
 
 #include "configfs.h"
 
-
+#ifdef CONFIG_HUAWEI_USB
+#include <linux/usb/huawei_usb.h>
+#include <chipset_common/hwusb/hw_usb_rwswitch.h>
+#endif
 /*------------------------------------------------------------------------*/
 
 #define FSG_DRIVER_DESC		"Mass Storage Function"
@@ -531,7 +534,12 @@ static int fsg_setup(struct usb_function *f,
 	u16			w_value = le16_to_cpu(ctrl->wValue);
 	u16			w_length = le16_to_cpu(ctrl->wLength);
 
+	/* modify to adapt for Android */
+#ifdef CONFIG_HUAWEI_USB
+	if (!fsg->common->fsg)
+#else
 	if (!fsg_is_set(fsg->common))
+#endif
 		return -EOPNOTSUPP;
 
 	++fsg->common->ep0_req_tag;	/* Record arrival of a new request */
@@ -1233,6 +1241,8 @@ static int do_read_header(struct fsg_common *common, struct fsg_buffhd *bh)
 	return 8;
 }
 
+
+#ifndef CONFIG_HUAWEI_USB
 static int do_read_toc(struct fsg_common *common, struct fsg_buffhd *bh)
 {
 	struct fsg_lun	*curlun = common->curlun;
@@ -1259,6 +1269,226 @@ static int do_read_toc(struct fsg_common *common, struct fsg_buffhd *bh)
 	store_cdrom_address(&buf[16], msf, curlun->num_sectors);
 	return 20;
 }
+#endif
+
+
+#ifdef CONFIG_HUAWEI_USB
+/* usbsdms_read_toc_data1 rsp packet */
+static u8 usbsdms_read_toc_data1[] = {
+	0x00, 0x0A, 0x01, 0x01,
+	0x00, 0x14, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00
+};
+
+/* usbsdms_read_toc_data1_format0000 rsp packet */
+static u8 usbsdms_read_toc_data1_format0000[] = {
+	0x00, 0x12, 0x01, 0x01,
+	0x00, 0x14, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+	/* the last four bytes:32MB */
+	0x00, 0x14, 0xAA, 0x00, 0x00, 0x00, 0xFF, 0xFF
+};
+
+/* usbsdms_read_toc_data1_format0001 rsp packet */
+static u8 usbsdms_read_toc_data1_format0001[] = {
+	0x00, 0x0A, 0x01, 0x01,
+	0x00, 0x14, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
+/* usbsdms_read_toc_data2 rsp packet */
+static u8 usbsdms_read_toc_data2[] = {
+	0x00, 0x2e, 0x01, 0x01,
+	0x01, 0x14, 0x00, 0xa0, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+	0x01, 0x14, 0x00, 0xa1, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+	0x01, 0x14, 0x00, 0xa2, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x3c,
+	/* ^ CDROM size from this byte */
+	0x01, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00
+};
+
+/* usbsdms_read_toc_data3 rsp packet */
+static u8 usbsdms_read_toc_data3[] = {
+	0x00, 0x12, 0x01, 0x01,
+	0x00, 0x14, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
+
+/* ------------------------------------------------------------
+ * function      : static int do_read_toc(struct fsg_dev *fsg, struct fsg_buffhd *bh)
+ * description   : response for command READ TOC
+ * input         : struct fsg_dev *fsg, struct fsg_buffhd *bh
+ * output        : none
+ * return        : response data length
+ * -------------------------------------------------------------
+ */
+static int do_read_toc(struct fsg_common *common, struct fsg_buffhd *bh)
+{
+	u8    *buf = (u8 *) bh->buf;
+	usbsdms_read_toc_cmd_type *read_toc_cmd = NULL;
+	unsigned long response_length = 0;
+	u8 *response_ptr = NULL;
+
+	read_toc_cmd = (usbsdms_read_toc_cmd_type *)common->cmnd;
+
+	/* When TIME is set to one, the address fields in some returned
+	 * data formats shall be in TIME form.
+	 * 2 is time form mask.
+	 */
+	if (2 == read_toc_cmd->msf) {
+		response_ptr = usbsdms_read_toc_data2;
+		response_length = sizeof(usbsdms_read_toc_data2);
+	} else if (0 != read_toc_cmd->allocation_length_msb) {
+		response_ptr = usbsdms_read_toc_data3;
+		response_length = sizeof(usbsdms_read_toc_data3);
+	} else {
+		/* When TIME is set to zero, the address fields in some returned
+		 * data formats shall be in LBA form.
+		 */
+		if (0 == read_toc_cmd->format) {
+			/* 0 is mean to valid as a Track Number */
+			response_ptr = usbsdms_read_toc_data1_format0000;
+			response_length = sizeof(usbsdms_read_toc_data1_format0000);
+		} else if (1 == read_toc_cmd->format) {
+			/* 1 is mean to ignored by Logical Unit */
+			response_ptr = usbsdms_read_toc_data1_format0001;
+			response_length = sizeof(usbsdms_read_toc_data1_format0001);
+		} else {
+			/* Valid as a Session Number */
+			response_ptr = usbsdms_read_toc_data1;
+			response_length = sizeof(usbsdms_read_toc_data1);
+		}
+	}
+
+	memcpy(buf, response_ptr, response_length);
+
+	if (response_length < common->data_size_from_cmnd)
+		common->data_size_from_cmnd = response_length;
+
+	common->data_size = common->data_size_from_cmnd;
+
+	common->residue = common->usb_amount_left = common->data_size;
+
+	return response_length;
+}
+#endif
+
+#ifdef CONFIG_HUAWEI_USB
+extern struct device *create_function_device(char *name);
+
+static ssize_t mass_storage_inquiry_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct usb_function_instance *fi = dev_get_drvdata(dev);
+	struct fsg_opts *opts = fsg_opts_from_func_inst(fi);
+
+	return snprintf(buf, PAGE_SIZE, "%s\n", opts->common->inquiry_string);
+}
+
+static ssize_t mass_storage_inquiry_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct usb_function_instance *fi = dev_get_drvdata(dev);
+	struct fsg_opts *opts = fsg_opts_from_func_inst(fi);
+	int len;
+
+	len = min(size, sizeof(opts->common->inquiry_string) - 1);
+
+	strncpy(opts->common->inquiry_string, buf, len);
+
+	opts->common->inquiry_string[len] = 0;
+
+	return size;
+}
+
+static DEVICE_ATTR(inquiry_string, (S_IRUGO | S_IWUSR),
+					mass_storage_inquiry_show,
+					mass_storage_inquiry_store);
+
+static struct device_attribute *mass_storage_function_attributes[] = {
+	&dev_attr_inquiry_string,
+	NULL
+};
+
+static int create_mass_storage_device(struct usb_function_instance *fi)
+{
+	struct device *dev;
+	struct device_attribute **attrs;
+	struct device_attribute *attr;
+	int err = 0;
+
+	dev = create_function_device("f_mass_storage");
+	if (IS_ERR(dev))
+		return PTR_ERR(dev);
+
+	attrs = mass_storage_function_attributes;
+	if (attrs) {
+		while ((attr = *attrs++) && !err)
+			err = device_create_file(dev, attr);
+		if (err) {
+			device_destroy(dev->class, dev->devt);
+			return -EINVAL;
+		}
+	}
+	dev_set_drvdata(dev, fi);
+	return 0;
+}
+
+/*
+ * huawei mass storage autorun and lun config
+ *
+ */
+
+#define MS_STG_SET_LEN         (32)
+#define FSG_MAX_LUNS_HUAWEI    (2)
+static char autorun[MS_STG_SET_LEN] = "enable";        /* enable/disable autorun function "enable"/"disable" */
+static char luns[MS_STG_SET_LEN]    = "sdcard";        /* "sdcard"/"cdrom,sdcard"/"cdrom"/"sdcard,cdrom" can be used*/
+
+static ssize_t autorun_store(
+	struct device *device, struct device_attribute *attr,
+	const char *buff, size_t size)
+{
+	if(size>MS_STG_SET_LEN || buff==NULL){
+		pr_err("mass_storage: autorun_store buff error\n");
+		return -EINVAL;
+	}
+	if(0!=strcmp(buff, "enable") && 0!=strcmp(buff ,"disable")){
+		pr_err("mass_storage: autorun_store para error '%s'\n", buff);
+		return -EINVAL;
+	}
+	strlcpy(autorun, buff, sizeof(autorun));
+
+	return size;
+}
+
+static ssize_t autorun_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%s\n", autorun);
+}
+
+static DEVICE_ATTR(autorun, S_IWUSR|S_IRUSR, autorun_show, autorun_store);
+
+static ssize_t luns_store(
+	struct device *device, struct device_attribute *attr,
+	const char *buff, size_t size)
+{
+	if(size>MS_STG_SET_LEN || buff==NULL){
+		pr_err("mass_storage: luns_store buff error\n");
+		return -EINVAL;
+	}
+	strlcpy(luns, buff, sizeof(luns));
+
+	return size;
+}
+
+static ssize_t luns_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%s\n", luns);
+}
+
+static DEVICE_ATTR(luns, S_IWUSR|S_IRUSR, luns_show, luns_store);
+
+
+#endif
 
 static int do_mode_sense(struct fsg_common *common, struct fsg_buffhd *bh)
 {
@@ -1991,9 +2221,15 @@ static int do_scsi_command(struct fsg_common *common)
 			goto unknown_cmnd;
 		common->data_size_from_cmnd =
 			get_unaligned_be16(&common->cmnd[7]);
+#ifdef CONFIG_HUAWEI_USB
+		reply = check_command(common, 10, DATA_DIR_TO_HOST,
+				      (3<<1) | (7<<7), 1,
+				      "READ TOC");
+#else
 		reply = check_command(common, 10, DATA_DIR_TO_HOST,
 				      (7<<6) | (1<<1), 1,
 				      "READ TOC");
+#endif
 		if (reply == 0)
 			reply = do_read_toc(common, bh);
 		break;
@@ -2087,7 +2323,16 @@ static int do_scsi_command(struct fsg_common *common)
 		if (reply == 0)
 			reply = do_write(common);
 		break;
-
+#ifdef CONFIG_HUAWEI_USB
+    case SC_REWIND:
+    case SC_REWIND_11:
+        pr_err("usb do rewind: cmdsize = %d\n", common->cmnd_size);
+        /* when rework in manufacture, if the phone is in google ports mode,
+         * we need to switch it to multi-ports mode for using the diag.
+         */
+        hw_usb_port_switch_request(14);
+        break;
+#endif
 	/*
 	 * Some mandatory commands that we recognize but don't implement.
 	 * They don't mean much in this setting.  It's left as an exercise
@@ -2867,6 +3112,8 @@ static struct attribute *fsg_lun_dev_attrs[] = {
 	&dev_attr_ro.attr,
 	&dev_attr_file.attr,
 	&dev_attr_nofua.attr,
+	&dev_attr_autorun.attr,
+	&dev_attr_luns.attr,
 	NULL
 };
 
@@ -3134,7 +3381,8 @@ static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 			fsg_ss_function);
 	if (ret)
 		goto autoconf_fail;
-
+	pr_info("mass_storage IN/%s OUT/%s\n", fsg->bulk_in->name,
+			fsg->bulk_out->name);
 	return 0;
 
 autoconf_fail:
@@ -3520,6 +3768,13 @@ static struct usb_function_instance *fsg_alloc_inst(void)
 	if (rc)
 		goto release_buffers;
 
+#ifdef CONFIG_HUAWEI_USB
+	if (create_mass_storage_device(&opts->func_inst)) {
+		rc = -ENODEV;
+		goto remove_luns;
+	}
+#endif
+
 	opts->lun0.lun = opts->common->luns[0];
 	opts->lun0.lun_id = 0;
 	config_group_init_type_name(&opts->lun0.group, "lun.0", &fsg_lun_type);
@@ -3530,6 +3785,10 @@ static struct usb_function_instance *fsg_alloc_inst(void)
 
 	return &opts->func_inst;
 
+#ifdef CONFIG_HUAWEI_USB
+remove_luns:
+	fsg_common_remove_luns(opts->common);
+#endif
 release_buffers:
 	fsg_common_free_buffers(opts->common);
 release_opts:

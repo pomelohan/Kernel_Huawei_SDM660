@@ -9,6 +9,7 @@
 #include <linux/quicklist.h>
 #include <linux/seq_file.h>
 #include <linux/swap.h>
+#include <linux/ion.h>
 #include <linux/vmstat.h>
 #include <linux/atomic.h>
 #include <linux/vmalloc.h>
@@ -18,6 +19,10 @@
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include "internal.h"
+
+#ifdef CONFIG_HUAWEI_UNMOVABLE_ISOLATE
+#include <linux/unmovable_isolate.h>
+#endif
 
 void __attribute__((weak)) arch_report_meminfo(struct seq_file *m)
 {
@@ -34,7 +39,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	unsigned long pages[NR_LRU_LISTS];
 	struct zone *zone;
 	int lru;
-
+	unsigned long ion_total = get_ion_total();
 /*
  * display in kilobytes.
  */
@@ -79,6 +84,15 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	available += global_page_state(NR_SLAB_RECLAIMABLE) -
 		     min(global_page_state(NR_SLAB_RECLAIMABLE) / 2, wmark_low);
 
+        /*
+         * Add the ioncache pool pages
+         */
+	available += global_page_state(NR_IONCACHE_PAGES);
+
+#ifdef CONFIG_TASK_PROTECT_LRU
+	available -= (long)global_page_state(NR_PROTECT_ACTIVE_FILE);
+#endif
+
 	if (available < 0)
 		available = 0;
 
@@ -99,6 +113,12 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 		"Active(file):   %8lu kB\n"
 		"Inactive(file): %8lu kB\n"
 		"Unevictable:    %8lu kB\n"
+#ifdef CONFIG_TASK_PROTECT_LRU
+		"Active(prot_anon):   %8lu kB\n"
+		"Inactive(prot_anon): %8lu kB\n"
+		"Active(prot_file):   %8lu kB\n"
+		"Inactive(prot_file): %8lu kB\n"
+#endif
 		"Mlocked:        %8lu kB\n"
 #ifdef CONFIG_HIGHMEM
 		"HighTotal:      %8lu kB\n"
@@ -111,6 +131,9 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 #endif
 		"SwapTotal:      %8lu kB\n"
 		"SwapFree:       %8lu kB\n"
+#ifdef CONFIG_NON_SWAP
+		"NonSwap:        %8lu kB\n"
+#endif
 		"Dirty:          %8lu kB\n"
 		"Writeback:      %8lu kB\n"
 		"AnonPages:      %8lu kB\n"
@@ -138,9 +161,17 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 		"AnonHugePages:  %8lu kB\n"
 #endif
+#ifdef CONFIG_HUAWEI_UNMOVABLE_ISOLATE
+		"Isolate1Free:   %8lu kB\n"
+		"Isolate2Free:   %8lu kB\n"
+#endif
 #ifdef CONFIG_CMA
 		"CmaTotal:       %8lu kB\n"
 		"CmaFree:        %8lu kB\n"
+#endif
+#ifdef CONFIG_ION
+		"IonTotalCache:  %8lu kB\n"
+		"IonTotalUsed:   %8lu kB\n"
 #endif
 		,
 		K(i.totalram),
@@ -156,6 +187,12 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 		K(pages[LRU_ACTIVE_FILE]),
 		K(pages[LRU_INACTIVE_FILE]),
 		K(pages[LRU_UNEVICTABLE]),
+#ifdef CONFIG_TASK_PROTECT_LRU
+		K(global_page_state(NR_PROTECT_ACTIVE_ANON)),
+		K(global_page_state(NR_PROTECT_INACTIVE_ANON)),
+		K(global_page_state(NR_PROTECT_ACTIVE_FILE)),
+		K(global_page_state(NR_PROTECT_INACTIVE_FILE)),
+#endif
 		K(global_page_state(NR_MLOCK)),
 #ifdef CONFIG_HIGHMEM
 		K(i.totalhigh),
@@ -168,6 +205,9 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 #endif
 		K(i.totalswap),
 		K(i.freeswap),
+#ifdef CONFIG_NON_SWAP
+		K(global_page_state(NR_NON_SWAP)),
+#endif
 		K(global_page_state(NR_FILE_DIRTY)),
 		K(global_page_state(NR_WRITEBACK)),
 		K(global_page_state(NR_ANON_PAGES)),
@@ -197,9 +237,17 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 		, K(global_page_state(NR_ANON_TRANSPARENT_HUGEPAGES) *
 		   HPAGE_PMD_NR)
 #endif
+#ifdef CONFIG_HUAWEI_UNMOVABLE_ISOLATE
+		, K(global_page_state(NR_FREE_UNMOVABLE_ISOLATE1_PAGES))
+		, K(global_page_state(NR_FREE_UNMOVABLE_ISOLATE2_PAGES))
+#endif
 #ifdef CONFIG_CMA
 		, K(totalcma_pages)
 		, K(global_page_state(NR_FREE_CMA_PAGES))
+#endif
+#ifdef CONFIG_ION
+		, K(global_page_state(NR_IONCACHE_PAGES))
+		, K(ion_total >> PAGE_SHIFT)
 #endif
 		);
 

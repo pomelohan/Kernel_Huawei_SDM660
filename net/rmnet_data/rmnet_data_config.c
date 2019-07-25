@@ -1262,7 +1262,7 @@ int rmnet_config_notify_cb(struct notifier_block *nb,
 	case NETDEV_UNREGISTER_FINAL:
 	case NETDEV_UNREGISTER:
 		trace_rmnet_unregister_cb_entry(dev);
-		LOGH("Kernel is trying to unregister %s", dev->name);
+		LOGH("Kernel is trying to unregister %s, event %lu", dev->name, event);
 		rmnet_force_unassociate_device(dev);
 		trace_rmnet_unregister_cb_exit(dev);
 		break;

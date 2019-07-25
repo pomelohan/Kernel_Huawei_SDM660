@@ -206,7 +206,7 @@ efi_header_end:
 
 	__INIT
 
-ENTRY(stext)
+ENTRY_NOTAG(stext)
 	bl	preserve_boot_args
 	bl	el2_setup			// Drop to EL1, w20=cpu_boot_mode
 	adrp	x24, __PHYS_OFFSET
@@ -465,7 +465,7 @@ ENDPROC(__primary_switched)
  */
 	.section ".text","ax"
 
-ENTRY(kimage_vaddr)
+ENTRY_NOTAG(kimage_vaddr)
 	.quad		_text - TEXT_OFFSET
 
 /*
@@ -593,7 +593,7 @@ ENDPROC(set_cpu_boot_mode_flag)
  */
 	.pushsection	.data..cacheline_aligned
 	.align	L1_CACHE_SHIFT
-ENTRY(__boot_cpu_mode)
+ENTRY_NOTAG(__boot_cpu_mode)
 	.long	BOOT_CPU_MODE_EL2
 	.long	BOOT_CPU_MODE_EL1
 	.popsection
@@ -602,7 +602,7 @@ ENTRY(__boot_cpu_mode)
 	 * This provides a "holding pen" for platforms to hold all secondary
 	 * cores are held until we're ready for them to initialise.
 	 */
-ENTRY(secondary_holding_pen)
+ENTRY_NOTAG(secondary_holding_pen)
 	bl	el2_setup			// Drop to EL1, w20=cpu_boot_mode
 	bl	set_cpu_boot_mode_flag
 	mrs	x0, mpidr_el1

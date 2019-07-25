@@ -43,7 +43,7 @@ menuconfig USB_GADGET
 	   the kernel DocBook documentation for this API.
 
 if USB_GADGET
-
+	
 config USB_GADGET_DEBUG
 	bool "Debugging messages (DEVELOPMENT)"
 	depends on DEBUG_KERNEL

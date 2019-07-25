@@ -281,6 +281,16 @@
 #include <asm/ioctls.h>
 #include <asm/unaligned.h>
 #include <net/busy_poll.h>
+#ifdef CONFIG_HW_WIFIPRO
+#include <hwnet/ipv4/wifipro_tcp_monitor.h>
+#endif
+#ifdef CONFIG_HW_NETWORK_AWARE
+#include <network_aware/network_aware.h>
+#endif
+
+#ifdef CONFIG_TCP_NODELAY
+#include <linux/blk-cgroup.h>
+#endif
 
 int sysctl_tcp_fin_timeout __read_mostly = TCP_FIN_TIMEOUT;
 
@@ -378,6 +388,27 @@ static int retrans_to_secs(u8 retrans, int timeout, int rto_max)
 	return period;
 }
 
+#ifdef CONFIG_TCP_NODELAY
+static bool tcp_is_foreground(void)
+{
+#ifdef CONFIG_BLK_DEV_THROTTLING
+	struct blkcg *blkcg = task_blkcg(current);
+
+	if (blkcg && blkcg->type <= BLK_THROTL_KBG)
+		return true;
+#endif
+
+	return false;
+}
+
+static void tcp_init_nodelay(struct tcp_sock *tp)
+{
+	tp->nodelay = sysctl_tcp_nodelay;
+	tp->nodelay_size = 0;
+	tp->pingpong = 0;
+}
+#endif
+
 /* Address-family independent initialization for a tcp_sock.
  *
  * NOTE: A lot of things set to zero explicitly by call to
@@ -397,6 +428,10 @@ void tcp_init_sock(struct sock *sk)
 	tp->mdev_us = jiffies_to_usecs(TCP_TIMEOUT_INIT);
 	tp->rtt_min[0].rtt = ~0U;
 
+#ifdef CONFIG_TCP_NODELAY
+	tcp_init_nodelay(tp);
+#endif
+
 	/* So many TCP implementations out there (incorrectly) count the
 	 * initial SYN frame in their delayed-ACK and congestion control
 	 * algorithms that we must have the following bandaid to talk
@@ -411,6 +446,11 @@ void tcp_init_sock(struct sock *sk)
 	tp->snd_cwnd_clamp = ~0;
 	tp->mss_cache = TCP_MSS_DEFAULT;
 	u64_stats_init(&tp->syncp);
+
+#ifdef CONFIG_TCP_AUTOTUNING
+	tp->rcv_rtt_est.min_rtt = ~0U;
+	tp->rcv_rate.rcv_wnd = ~0U;
+#endif
 
 	tp->reordering = sysctl_tcp_reordering;
 	tcp_enable_early_retrans(tp);
@@ -898,6 +938,38 @@ static int tcp_send_mss(struct sock *sk, int *size_goal, int flags)
 	return mss_now;
 }
 
+#ifdef CONFIG_TCP_NODELAY
+
+#define TCP_NODELAY_COUNT_LIMIT	8
+
+static bool tcp_should_nodelay(struct sock *sk, size_t size, int mss)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+
+	if (tp->nodelay && sysctl_tcp_nodelay) {
+		/* limit no delay packet size to 3 * MTU */
+		int limit = (mss << 1) + mss;
+
+		/* send msg count */
+		tp->pingpong++;
+
+		/* 3 * mss sendmsg without response, disable nodely */
+		if (size >= limit || tp->nodelay_size >= limit ||
+		    tp->pingpong > TCP_NODELAY_COUNT_LIMIT) {
+			tp->nodelay = 0;
+			return false;
+		}
+
+		tp->nodelay_size += size;
+
+		/* allow nodelay for foreground app only */
+		return tcp_is_foreground();
+	}
+
+	return false;
+}
+#endif
+
 static ssize_t do_tcp_sendpages(struct sock *sk, struct page *page, int offset,
 				size_t size, int flags)
 {
@@ -1110,6 +1182,14 @@ int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	int mss_now = 0, size_goal, copied_syn = 0;
 	bool sg;
 	long timeo;
+#ifdef CONFIG_HW_NETWORK_AWARE
+	tcp_network_aware(false);
+	stat_bg_network_flow(false, size);
+#endif
+
+#ifdef CONFIG_TCP_NODELAY
+	int nonagle = 0;
+#endif
 
 	lock_sock(sk);
 
@@ -1295,8 +1375,17 @@ wait_for_memory:
 	}
 
 out:
+#ifdef CONFIG_TCP_NODELAY
+	if (tcp_should_nodelay(sk, size, mss_now))
+		nonagle = TCP_NAGLE_PUSH;
+#endif
 	if (copied)
+#ifdef CONFIG_TCP_NODELAY
+		tcp_push(sk, flags, mss_now, tp->nonagle | nonagle, size_goal);
+#else
 		tcp_push(sk, flags, mss_now, tp->nonagle, size_goal);
+#endif
+
 out_nopush:
 	release_sock(sk);
 	return copied + copied_syn;
@@ -1607,6 +1696,11 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return inet_recv_error(sk, msg, len, addr_len);
 
+
+#ifdef CONFIG_HW_NETWORK_AWARE
+	tcp_network_aware(true);
+#endif
+
 	if (sk_can_busy_loop(sk) && skb_queue_empty(&sk->sk_receive_queue) &&
 	    (sk->sk_state == TCP_ESTABLISHED))
 		sk_busy_loop(sk, nonblock);
@@ -1908,6 +2002,9 @@ skip_copy:
 	/* Clean up data we have read: This will do ACK frames. */
 	tcp_cleanup_rbuf(sk, copied);
 
+#ifdef CONFIG_HW_NETWORK_AWARE
+	stat_bg_network_flow(true, copied);
+#endif
 	release_sock(sk);
 	return copied;
 
@@ -1928,6 +2025,15 @@ EXPORT_SYMBOL(tcp_recvmsg);
 void tcp_set_state(struct sock *sk, int state)
 {
 	int oldstate = sk->sk_state;
+#ifdef CONFIG_HW_WIFIPRO
+	struct inet_sock *inet_temp = inet_sk(sk);
+	unsigned int dest_addr = 0;
+	unsigned int dest_port = 0;
+	if (NULL != inet_temp) {
+		dest_addr = htonl(inet_temp->inet_daddr);
+		dest_port = htons(inet_temp->inet_dport);
+	}
+#endif
 
 	switch (state) {
 	case TCP_ESTABLISHED:
@@ -1953,6 +2059,16 @@ void tcp_set_state(struct sock *sk, int state)
 	 * socket sitting in hash tables.
 	 */
 	sk_state_store(sk, state);
+#ifdef CONFIG_HW_WIFIPRO
+	if (state == TCP_SYN_SENT) {
+		if (is_wifipro_on && is_mcc_china && wifipro_is_not_local_or_lan_sock(dest_addr)) {
+			if (wifipro_is_google_sock(current, dest_addr)) {
+				sk->wifipro_is_google_sock = 1;
+				WIFIPRO_DEBUG("add a google sock:%s", wifipro_ntoa(dest_addr));
+			}
+		}
+	}
+#endif
 
 #ifdef STATE_TRACE
 	SOCK_DEBUG(sk, "TCP sk=%p, State %s -> %s\n", sk, statename[oldstate], statename[state]);
@@ -2405,6 +2521,9 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 			 */
 			tp->nonagle |= TCP_NAGLE_OFF|TCP_NAGLE_PUSH;
 			tcp_push_pending_frames(sk);
+#ifdef CONFIG_TCP_NODELAY
+			tp->nodelay = 0;
+#endif
 		} else {
 			tp->nonagle &= ~TCP_NAGLE_OFF;
 		}

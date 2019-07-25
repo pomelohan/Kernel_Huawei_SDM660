@@ -1,0 +1,32 @@
+&pm660l_gpios {
+     /* GPIO 7 for VOL_UP */
+     gpio@c600 {
+         status = "okay";
+         qcom,mode = <0>;
+         qcom,pull = <0>;
+         qcom,vin-sel = <0x01>;
+         qcom,src-sel = <0>;
+         qcom,out-strength = <1>;
+     };
+};
+
+&soc {
+	gpio_keys {
+		compatible = "gpio-keys";
+		input-name = "gpio-keys";
+		status = "ok";
+
+		/delete-node/ home;
+		/delete-node/ camera_focus;
+		/delete-node/ camera_snapshot;
+
+		vol_up {
+			label = "volume_up";
+			gpios = <&pm660l_gpios 7 0x1>;
+			linux,input-type = <1>;
+			linux,code = <115>;
+			gpio-key,wakeup;
+			debounce-interval = <15>;
+		};
+	};
+};

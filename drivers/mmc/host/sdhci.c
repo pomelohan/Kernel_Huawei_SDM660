@@ -37,6 +37,13 @@
 #include "sdhci.h"
 #include "cmdq_hci.h"
 
+#ifdef CONFIG_HUAWEI_SDCARD_DSM
+#include <linux/mmc/dsm_sdcard.h>
+#endif
+
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+#include <linux/mmc/dsm_emmc.h>
+#endif
 #define DRIVER_NAME "sdhci"
 
 #define DBG(f, x...) \
@@ -54,6 +61,14 @@
 
 static unsigned int debug_quirks = 0;
 static unsigned int debug_quirks2;
+
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+static struct kmem_cache *mmc_area_cachep __read_mostly;
+static struct scatterlist	*cur_sg = NULL;
+static struct scatterlist	*prev_sg = NULL;
+
+#define MAX_CRCERR_COUNT 2
+#endif
 
 static void sdhci_finish_data(struct sdhci_host *);
 
@@ -1156,11 +1171,14 @@ static void sdhci_finish_data(struct sdhci_host *host)
 		tasklet_schedule(&host->finish_tasklet);
 }
 
+extern void mmc_start_request_rwlog(struct mmc_command *cmd);
 void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 {
 	int flags;
 	u32 mask;
 	unsigned long timeout;
+
+	mmc_start_request_rwlog(cmd);
 
 	WARN_ON(host->cmd);
 
@@ -2589,6 +2607,13 @@ out_unlock:
 	spin_unlock_irqrestore(&host->lock, flags);
 	sdhci_runtime_pm_put(host);
 
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+	if(err && !strcmp(mmc_hostname(mmc), "mmc0")){
+		DSM_EMMC_LOG(mmc->card, DSM_EMMC_TUNING_ERROR,
+			"%s:eMMC tuning error: %d\n", __FUNCTION__, err);
+	}
+#endif
+
 	return err;
 }
 
@@ -2852,6 +2877,22 @@ static void sdhci_timeout_timer(unsigned long data)
 	spin_lock_irqsave(&host->lock, flags);
 
 	if (host->mrq) {
+#ifdef CONFIG_HUAWEI_SDCARD_DSM
+		if(!strcmp(mmc_hostname(host->mmc), "mmc1")) {
+			DSM_SDCARD_LOG(DMS_SDCARD_HARDWARE_TIMEOUT_ERR,
+				"sdcard manufactory id is 0x%x %s:hardware time out.\n",sd_manfid,__func__);
+			pr_err("Err num: %d, %s\n",DMS_SDCARD_HARDWARE_TIMEOUT_ERR, "sdcard interrupt time out error.");
+		}
+#endif
+
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+		if(host->mmc != NULL && host->mmc->card != NULL){
+			if(mmc_card_mmc(host->mmc->card)){
+				DSM_EMMC_LOG(host->mmc->card, DSM_EMMC_HOST_TIMEOUT_ERR,
+					"%s:eMMC HOST Timeout waiting for hardware interrupt.\n", __FUNCTION__);
+			}
+		}
+#endif
 		pr_err("%s: Timeout waiting for hardware "
 			"interrupt.\n", mmc_hostname(host->mmc));
 		MMC_TRACE(host->mmc, "Timeout waiting for h/w interrupt\n");
@@ -2884,6 +2925,36 @@ static void sdhci_timeout_timer(unsigned long data)
  * Interrupt handling                                                        *
  *                                                                           *
 \*****************************************************************************/
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+static void sdhci_underclocking(struct sdhci_host *host)
+{
+	if (host->mmc->crc_count++ < MAX_CRCERR_COUNT) {
+		pr_err("%s: %s: error count : %d\n", mmc_hostname(host->mmc),
+			__func__, host->mmc->crc_count);
+		return;
+	}
+	switch (host->mmc->ios.timing) {
+	case MMC_TIMING_UHS_SDR12:
+		host->mmc->caps &= ~MMC_CAP_UHS_SDR12;
+	case MMC_TIMING_UHS_SDR25:
+		host->mmc->caps &= ~MMC_CAP_UHS_SDR25;
+	case MMC_TIMING_UHS_SDR50:
+		host->mmc->caps &= ~MMC_CAP_UHS_SDR50;
+	case MMC_TIMING_UHS_DDR50:
+		host->mmc->caps &= ~MMC_CAP_UHS_DDR50;
+	case MMC_TIMING_UHS_SDR104:
+		host->mmc->caps &= ~MMC_CAP_UHS_SDR104;
+		break;
+	default:
+		pr_err("%s: %s: unknow timing : %d\n", mmc_hostname(host->mmc),
+			__func__, host->mmc->ios.timing);
+		break;
+	}
+	host->mmc->crc_count = 0;
+	pr_err("%s: %s: disable clock : %d\n", mmc_hostname(host->mmc),
+		__func__, host->mmc->ios.timing);
+}
+#endif
 
 static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask, u32 *mask)
 {
@@ -2907,9 +2978,20 @@ static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask, u32 *mask)
 	if (intmask & SDHCI_INT_TIMEOUT)
 		host->cmd->error = -ETIMEDOUT;
 	else if (intmask & (SDHCI_INT_CRC | SDHCI_INT_END_BIT |
-			SDHCI_INT_INDEX))
+			SDHCI_INT_INDEX)) {
 		host->cmd->error = -EILSEQ;
-
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		if ((host->cmd->opcode != MMC_SEND_TUNING_BLOCK_HS400) &&
+			(host->cmd->opcode != MMC_SEND_TUNING_BLOCK_HS200) &&
+			(host->cmd->opcode != MMC_SEND_STATUS) &&
+			(host->cmd->opcode != MMC_SEND_TUNING_BLOCK)) {
+			pr_err("%s: CMD%d: Command CRC error\n",
+				mmc_hostname(host->mmc), host->cmd->opcode);
+			if(!strcmp(mmc_hostname(host->mmc), "mmc1"))
+				sdhci_underclocking(host);
+		}
+#endif
+	}
 	if (intmask & SDHCI_INT_AUTO_CMD_ERR) {
 		auto_cmd_status = host->auto_cmd_err_sts;
 		pr_err_ratelimited("%s: %s: AUTO CMD err sts 0x%08x\n",
@@ -3086,8 +3168,25 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 	else if (intmask & SDHCI_INT_DATA_END_BIT)
 		host->data->error = -EILSEQ;
 	else if ((intmask & SDHCI_INT_DATA_CRC) &&
-		(command != MMC_BUS_TEST_R))
+		(command != MMC_BUS_TEST_R)) {
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		command = SDHCI_GET_CMD(sdhci_readw(host,
+						    SDHCI_COMMAND));
+#endif
 		host->data->error = -EILSEQ;
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+		if ((command != MMC_SEND_TUNING_BLOCK_HS400) &&
+			(command != MMC_SEND_TUNING_BLOCK_HS200) &&
+			(command != MMC_SEND_TUNING_BLOCK)) {
+			pr_err("%s: Data CRC error\n",
+				mmc_hostname(host->mmc));
+			pr_err("%s: opcode 0x%.8x\n", __func__,
+				command);
+			if (!strcmp(mmc_hostname(host->mmc), "mmc1"))
+				sdhci_underclocking(host);
+		}
+#endif
+	}
 	else if (intmask & SDHCI_INT_ADMA_ERROR) {
 		pr_err("%s: ADMA error\n", mmc_hostname(host->mmc));
 		sdhci_adma_show_error(host);
@@ -3168,6 +3267,19 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 	}
 }
 
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+struct scatterlist* sdhci_get_cur_sg(void){
+
+	return cur_sg;
+}
+EXPORT_SYMBOL(sdhci_get_cur_sg);
+
+struct scatterlist* sdhci_get_prev_sg(void){
+	return prev_sg;
+}
+EXPORT_SYMBOL(sdhci_get_prev_sg);
+#endif
+
 #ifdef CONFIG_MMC_CQ_HCI
 static int sdhci_get_cmd_err(u32 intmask)
 {
@@ -3205,6 +3317,11 @@ static irqreturn_t sdhci_cmdq_irq(struct sdhci_host *host, u32 intmask)
 	if (err) {
 		/* Clear the error interrupts */
 		mask = intmask & SDHCI_INT_ERROR_MASK;
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+		DSM_EMMC_LOG(host->mmc->card, DSM_EMMC_HOST_ERR,
+			"%s:%s cmdq interrupt error, status:%x\n",
+			__FUNCTION__, mmc_hostname(host->mmc), mask);
+#endif
 		sdhci_writel(host, mask, SDHCI_INT_STATUS);
 	}
 	return ret;
@@ -3874,6 +3991,9 @@ int sdhci_add_host(struct sdhci_host *host)
 	unsigned int override_timeout_clk;
 	u32 max_clk;
 	int ret;
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	u32 max_segs_size = 0;
+#endif
 
 	WARN_ON(host == NULL);
 	if (host == NULL)
@@ -4428,6 +4548,46 @@ int sdhci_add_host(struct sdhci_host *host)
 	sdhci_enable_card_detection(host);
 
 	mmc_add_host(mmc);
+
+#ifdef CONFIG_HUAWEI_QCOM_MMC
+	/*add slab cache for mmc1(sdcard)*/
+	if(!strcmp(mmc_hostname(mmc), "mmc1")){
+		max_segs_size = mmc->max_segs*sizeof(struct scatterlist);
+
+		mmc_area_cachep= kmem_cache_create("mmc_area_cache",
+			max_segs_size,
+				0, 0, NULL);
+
+		if(unlikely(!mmc_area_cachep)) {
+			printk(KERN_ERR "sdhci: failed to create slab cache for sdcard\n");
+			goto cache_fail_create;
+		}
+		pr_info("created %s cache size=%d bytes\n",mmc_hostname(mmc), max_segs_size);
+
+		/*malloc cache for sdcard*/
+		cur_sg = kmem_cache_zalloc(mmc_area_cachep, GFP_KERNEL);
+		if(NULL == cur_sg){
+			printk(KERN_ERR "cur_sg cache alloc failed\n");
+			goto cache_fail_create;
+		}
+		pr_info("cur cache alloc sucess\n");
+
+		prev_sg = kmem_cache_zalloc(mmc_area_cachep, GFP_KERNEL);
+		if (NULL == prev_sg){
+			printk(KERN_ERR "prev_sg cache alloc failed\n");
+
+			/*free cur_sg cache due to malloc prev_sg fail*/
+			kmem_cache_free(mmc_area_cachep, cur_sg);
+
+			/*set pointer to NULL*/
+			cur_sg = NULL;
+			prev_sg = NULL;
+			goto cache_fail_create;
+		}
+		pr_info("pre cache alloc sucess\n");
+	}
+cache_fail_create:
+#endif
 	return 0;
 
 #ifdef SDHCI_USE_LEDS_CLASS

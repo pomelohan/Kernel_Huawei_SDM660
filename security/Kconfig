@@ -173,6 +173,7 @@ config HARDENED_USERCOPY_PAGESPAN
 	  trying to find such users.
 
 source security/selinux/Kconfig
+source security/hwselinux/Kconfig
 source security/smack/Kconfig
 source security/tomoyo/Kconfig
 source security/apparmor/Kconfig
@@ -216,6 +217,8 @@ config DEFAULT_SECURITY
 	default "tomoyo" if DEFAULT_SECURITY_TOMOYO
 	default "apparmor" if DEFAULT_SECURITY_APPARMOR
 	default "" if DEFAULT_SECURITY_DAC
+
+source security/kernel_harden/Kconfig
 
 endmenu
 

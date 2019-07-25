@@ -129,6 +129,10 @@ EXPORT_SYMBOL(sysctl_udp_wmem_min);
 atomic_long_t udp_memory_allocated;
 EXPORT_SYMBOL(udp_memory_allocated);
 
+#ifdef CONFIG_HW_NETWORK_AWARE
+extern void tcp_network_aware(bool isRecving);
+#endif
+
 #define MAX_UDP_PORTS 65536
 #define PORTS_PER_CHAIN (MAX_UDP_PORTS / UDP_HTABLE_SIZE_MIN)
 
@@ -824,7 +828,7 @@ static int udp_send_skb(struct sk_buff *skb, struct flowi4 *fl4)
 	if (is_udplite)  				 /*     UDP-Lite      */
 		csum = udplite_csum(skb);
 
-	else if (sk->sk_no_check_tx) {   /* UDP csum disabled */
+	else if (sk->sk_no_check_tx && !skb_is_gso(skb)) {   /* UDP csum off */
 
 		skb->ip_summed = CHECKSUM_NONE;
 		goto send;
@@ -911,6 +915,9 @@ int udp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	if (msg->msg_flags & MSG_OOB) /* Mirror BSD error message compatibility */
 		return -EOPNOTSUPP;
 
+#ifdef CONFIG_HW_NETWORK_AWARE
+	tcp_network_aware(false);
+#endif
 	ipc.opt = NULL;
 	ipc.tx_flags = 0;
 	ipc.ttl = 0;
@@ -1292,6 +1299,10 @@ try_again:
 				  &peeked, &off, &err);
 	if (!skb)
 		goto out;
+
+#ifdef CONFIG_HW_NETWORK_AWARE
+	tcp_network_aware(true);
+#endif
 
 	ulen = skb->len - sizeof(struct udphdr);
 	copied = len;

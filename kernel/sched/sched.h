@@ -846,6 +846,12 @@ struct rq {
 	struct cpuidle_state *idle_state;
 	int idle_state_idx;
 #endif
+#ifdef CONFIG_HW_VIP_THREAD
+	/*task list for vip thread*/
+	struct list_head vip_thread_list;
+	int active_vip_balance;
+	struct cpu_stop_work vip_balance_work;
+#endif
 };
 
 static inline int cpu_of(struct rq *rq)

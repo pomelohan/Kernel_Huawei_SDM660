@@ -26,7 +26,18 @@ static __always_inline void add_page_to_lru_list(struct page *page,
 				struct lruvec *lruvec, enum lru_list lru)
 {
 	int nr_pages = hpage_nr_pages(page);
+#ifdef CONFIG_NON_SWAP
+	if (PageNonSwap(page)) {
+		lru = LRU_UNEVICTABLE;
+#ifdef CONFIG_MEMCG
+		mem_cgroup_update_lru_size(lruvec, NR_NON_SWAP, nr_pages);
+#endif
+		__mod_zone_page_state(lruvec_zone(lruvec), NR_NON_SWAP, nr_pages);
+	}
+#endif
+#ifdef CONFIG_MEMCG
 	mem_cgroup_update_lru_size(lruvec, lru, nr_pages);
+#endif
 	list_add(&page->lru, &lruvec->lists[lru]);
 	__mod_zone_page_state(lruvec_zone(lruvec), NR_LRU_BASE + lru, nr_pages);
 }
@@ -35,7 +46,18 @@ static __always_inline void del_page_from_lru_list(struct page *page,
 				struct lruvec *lruvec, enum lru_list lru)
 {
 	int nr_pages = hpage_nr_pages(page);
+#ifdef CONFIG_NON_SWAP
+	if (PageNonSwap(page)) {
+		lru = LRU_UNEVICTABLE;
+#ifdef CONFIG_MEMCG
+		mem_cgroup_update_lru_size(lruvec, NR_NON_SWAP, -nr_pages);
+#endif
+		__mod_zone_page_state(lruvec_zone(lruvec), NR_NON_SWAP, -nr_pages);
+	}
+#endif
+#ifdef CONFIG_MEMCG
 	mem_cgroup_update_lru_size(lruvec, lru, -nr_pages);
+#endif
 	list_del(&page->lru);
 	__mod_zone_page_state(lruvec_zone(lruvec), NR_LRU_BASE + lru, -nr_pages);
 }

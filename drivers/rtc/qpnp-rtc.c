@@ -54,6 +54,10 @@ EXPORT_SYMBOL(poweron_alarm);
 module_param(poweron_alarm, bool, 0644);
 MODULE_PARM_DESC(poweron_alarm, "Enable/Disable power-on alarm");
 
+extern int huawei_rtc_remove(void);
+extern int huawei_rtc_init(struct device *dev);
+extern struct rtc_class_ops* get_huawei_rtc_rw_ops(struct rtc_class_ops *qpnp_rtc_rw_ops_ptr);
+
 /* rtc driver internal structure */
 struct qpnp_rtc {
 	u8			rtc_ctrl_reg;
@@ -335,7 +339,7 @@ qpnp_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 
 	rtc_dd->alarm_ctrl_reg1 = ctrl_reg;
 
-	dev_dbg(dev, "Alarm Set for h:r:s=%d:%d:%d, d/m/y=%d/%d/%d\n",
+	dev_info(dev, "Alarm Set for h:r:s=%d:%d:%d, d/m/y=%d/%d/%d\n",
 			alarm->time.tm_hour, alarm->time.tm_min,
 			alarm->time.tm_sec, alarm->time.tm_mday,
 			alarm->time.tm_mon, alarm->time.tm_year);
@@ -369,7 +373,7 @@ qpnp_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 		return rc;
 	}
 
-	dev_dbg(dev, "Alarm set for - h:r:s=%d:%d:%d, d/m/y=%d/%d/%d\n",
+	dev_info(dev, "Alarm set for - h:r:s=%d:%d:%d, d/m/y=%d/%d/%d\n",
 		alarm->time.tm_hour, alarm->time.tm_min,
 				alarm->time.tm_sec, alarm->time.tm_mday,
 				alarm->time.tm_mon, alarm->time.tm_year);
@@ -587,7 +591,15 @@ static int qpnp_rtc_probe(struct platform_device *pdev)
 	if (rtc_dd->rtc_write_enable == true)
 		rtc_ops = &qpnp_rtc_rw_ops;
 
+	rtc_ops = get_huawei_rtc_rw_ops(&qpnp_rtc_rw_ops);
+
 	dev_set_drvdata(&pdev->dev, rtc_dd);
+
+	/* Initialise the HUAWEI RTC*/
+	rc = huawei_rtc_init(&pdev->dev);
+	if(rc){
+		dev_err(&pdev->dev, "huawei rtc init failed !\n");
+	}
 
 	/* Register the RTC device */
 	rtc_dd->rtc = rtc_device_register("qpnp_rtc", &pdev->dev,
@@ -629,6 +641,8 @@ fail_rtc_enable:
 static int qpnp_rtc_remove(struct platform_device *pdev)
 {
 	struct qpnp_rtc *rtc_dd = dev_get_drvdata(&pdev->dev);
+
+	huawei_rtc_remove();
 
 	device_init_wakeup(&pdev->dev, 0);
 	free_irq(rtc_dd->rtc_alarm_irq, rtc_dd);

@@ -218,7 +218,8 @@ struct ion_handle *ion_import_dma_buf(struct ion_client *client, int fd);
  * a secure heap.
  */
 bool ion_dma_buf_is_secure(struct dma_buf *dmabuf);
-
+extern unsigned long get_ion_total(void);
+int dump_ion_memory_info(bool verbose);
 #else
 static inline void ion_reserve(struct ion_platform_data *data)
 {
@@ -287,5 +288,9 @@ bool ion_dma_buf_is_secure(struct dma_buf *dmabuf)
 	return false;
 }
 
+static inline unsigned long get_ion_total(void)
+{
+	return -ENODEV;
+}
 #endif /* CONFIG_ION */
 #endif /* _LINUX_ION_H */

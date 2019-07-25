@@ -41,6 +41,9 @@
 #include <linux/compiler.h>
 #include <linux/gfp.h>
 #include <linux/module.h>
+#ifdef CONFIG_HW_WIFIPRO
+#include <hwnet/ipv4/wifipro_tcp_monitor.h>
+#endif
 
 /* People can turn this off for buggy TCP's found in printers etc. */
 int sysctl_tcp_retrans_collapse __read_mostly = 1;
@@ -291,6 +294,9 @@ static u16 tcp_select_window(struct sock *sk)
 	/* Make sure we do not exceed the maximum possible
 	 * scaled window.
 	 */
+#ifdef CONFIG_TCP_AUTOTUNING
+	new_win = min(tp->rcv_rate.rcv_wnd, new_win);
+#endif
 	if (!tp->rx_opt.rcv_wscale && sysctl_tcp_workaround_signed_windows)
 		new_win = min(new_win, MAX_TCP_WINDOW);
 	else
@@ -3255,6 +3261,9 @@ int tcp_connect(struct sock *sk)
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *buff;
 	int err;
+#ifdef CONFIG_HW_WIFIPRO
+	int wifipro_dev_max_len = 0;
+#endif
 
 	tcp_connect_init(sk);
 
@@ -3288,6 +3297,15 @@ int tcp_connect(struct sock *sk)
 	/* Timer for repeating the SYN until an answer. */
 	inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
 				  inet_csk(sk)->icsk_rto, TCP_RTO_MAX);
+#ifdef CONFIG_HW_WIFIPRO
+	if (buff->dev) {
+	    wifipro_dev_max_len = strnlen(buff->dev->name, IFNAMSIZ-1);
+	    strncpy(buff->sk->wifipro_dev_name, buff->dev->name, wifipro_dev_max_len);
+	    buff->sk->wifipro_dev_name[wifipro_dev_max_len] = '\0';
+	    WIFIPRO_DEBUG("wifipro_dev_name is %s", buff->dev->name);
+	}
+#endif
+
 	return 0;
 }
 EXPORT_SYMBOL(tcp_connect);

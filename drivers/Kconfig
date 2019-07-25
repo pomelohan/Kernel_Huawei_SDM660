@@ -144,6 +144,11 @@ source "drivers/staging/Kconfig"
 
 source "drivers/platform/Kconfig"
 
+source "drivers/hw_usb/switch/Kconfig"
+
+source "drivers/hwsensor/Kconfig"
+source "drivers/sensors/Kconfig"
+
 source "drivers/clk/Kconfig"
 
 source "drivers/hwspinlock/Kconfig"
@@ -190,6 +195,8 @@ source "drivers/mcb/Kconfig"
 
 source "drivers/perf/Kconfig"
 
+source "drivers/wlan_driver/Kconfig"
+
 source "drivers/ras/Kconfig"
 
 source "drivers/thunderbolt/Kconfig"
@@ -212,4 +219,45 @@ source "drivers/bif/Kconfig"
 
 source "drivers/sensors/Kconfig"
 
+source "drivers/dsm/Kconfig"
+
+source "drivers/log/Kconfig"
+
+source "drivers/huawei_platform/Kconfig"
+
+source "drivers/devkit/lcdkit/Kconfig"
+
+source "drivers/devkit/tpkit/Kconfig"
+
+source "drivers/devkit/audiokit/Kconfig"
+
+source "drivers/hwusb/Kconfig"
+
+source "drivers/hw_fac_info/Kconfig"
+
+source "drivers/srecorder/Kconfig"
+
+source "drivers/cpuload/Kconfig"
+
+source "drivers/cfi/Kconfig"
+
+source "drivers/hwbfm/Kconfig"
+
+source "drivers/boottime/Kconfig"
+
+source "drivers/mmonitor/Kconfig"
+
+source "drivers/huawei/Kconfig"
+
+source "drivers/cpuinfo/Kconfig"
+
+source "drivers/hwnet/Kconfig"
+
+source "drivers/iotrace/Kconfig"
+
+source "drivers/dev_detect/Kconfig"
+
+source "drivers/hwnet/Kconfig"
+
+source "drivers/hwzerohung/Kconfig"
 endmenu

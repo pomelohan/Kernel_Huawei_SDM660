@@ -32,6 +32,11 @@
 #include <asm/uaccess.h>
 #include "internal.h"
 
+#ifdef CONFIG_DUMP_SYS_INFO
+#include <linux/module.h>
+#include <linux/srecorder.h>
+#endif
+
 struct bdev_inode {
 	struct block_device bdev;
 	struct inode vfs_inode;
@@ -426,7 +431,7 @@ int bdev_write_page(struct block_device *bdev, sector_t sector,
 			struct page *page, struct writeback_control *wbc)
 {
 	int result;
-	int rw = (wbc->sync_mode == WB_SYNC_ALL) ? WRITE_SYNC : WRITE;
+	int rw = wbc_to_write_cmd(wbc);
 	const struct block_device_operations *ops = bdev->bd_disk->fops;
 
 	if (!ops->rw_page || bdev_get_integrity(bdev))
@@ -627,6 +632,20 @@ static int bdev_set(struct inode *inode, void *data)
 }
 
 static LIST_HEAD(all_bdevs);
+
+#ifdef CONFIG_DUMP_SYS_INFO
+unsigned long get_all_bdevs(void)
+{
+    return (unsigned long)&all_bdevs;
+}
+EXPORT_SYMBOL(get_all_bdevs);
+
+unsigned long get_bdev_lock(void)
+{
+    return (unsigned long)&bdev_lock;
+}
+EXPORT_SYMBOL(get_bdev_lock);
+#endif
 
 /*
  * If there is a bdev inode for this device, unhash it so that it gets evicted

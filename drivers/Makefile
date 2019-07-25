@@ -11,13 +11,14 @@ obj-y				+= bus/
 obj-$(CONFIG_GENERIC_PHY)	+= phy/
 
 # GPIO must come after pinctrl as gpios may need to mux pins etc
-obj-$(CONFIG_PINCTRL)		+= pinctrl/
+obj-y				+= pinctrl/
 obj-y				+= gpio/
 obj-y				+= pwm/
 obj-$(CONFIG_PCI)		+= pci/
 obj-$(CONFIG_PARISC)		+= parisc/
 obj-$(CONFIG_RAPIDIO)		+= rapidio/
 obj-y				+= video/
+obj-$(CONFIG_LCDKIT_DRIVER)    += devkit/lcdkit/
 obj-y				+= idle/
 
 # IPMI must come before ACPI in order to provide IPMI opregion support
@@ -80,6 +81,7 @@ obj-$(CONFIG_SLIMBUS)		+= slimbus/
 obj-$(CONFIG_SOUNDWIRE)		+= soundwire/
 obj-y				+= hsi/
 obj-y				+= net/
+obj-$(CONFIG_QCA_CLD_WLAN)	+= wlan_driver/
 obj-$(CONFIG_ATM)		+= atm/
 obj-$(CONFIG_FUSION)		+= message/
 obj-y				+= firewire/
@@ -180,5 +182,36 @@ obj-$(CONFIG_FPGA)		+= fpga/
 
 obj-$(CONFIG_BIF)		+= bif/
 
+obj-$(CONFIG_SENSORS)		+= sensors/
 obj-$(CONFIG_SENSORS_SSC)	+= sensors/
+obj-$(CONFIG_HUAWEI_TS_KIT) += devkit/tpkit/
+obj-$(CONFIG_AUDIOKIT)          += devkit/audiokit/
 obj-$(CONFIG_ESOC)              += esoc/
+
+
+obj-$(CONFIG_HUAWEI_SENSOR_INFO)			+= hwsensor/
+obj-$(CONFIG_LOG_EXCEPTION) += log_usertype/
+obj-$(CONFIG_HUAWEI_DSM)    += dsm/
+obj-$(CONFIG_LOGGER_EXTEND) += log/
+obj-$(CONFIG_HUAWEI_FACTORY_INFO) += hw_fac_info/
+obj-$(CONFIG_HUAWEI_QCOM_MMC) += bootdevices/
+obj-$(CONFIG_SRECORDER)     	+= srecorder/
+obj-$(CONFIG_HUAWEI_DRIVERS)	+= huawei_platform/
+
+obj-$(CONFIG_HW_GADGET)     += hwusb/
+obj-$(CONFIG_HW_WIFIPRO)       += hwnet/
+obj-$(CONFIG_HW_CPULOAD_NOTI) += cpuload/
+obj-$(CONFIG_HW_MEMORY_MONITOR) += mmonitor/
+obj-$(CONFIG_HW_MEMORY_MONITOR) += allocpages_delayacct/
+obj-y += cfi/
+obj-y += huawei/
+obj-$(CONFIG_HUAWEI_BFM)        += hwbfm/
+#/* AR0009CRQN yuanshuai 20170919 begin */
+obj-$(CONFIG_HUAWEI_BOOT_TIME) +=boottime/
+#/* AR0009CRQN yuanshuai 20170919 end */
+obj-$(CONFIG_HUAWEI_CPU_INFO) += cpuinfo/
+
+obj-$(CONFIG_HUAWEI_IO_TRACING) += iotrace/
+
+obj-$(CONFIG_HUAWEI_DEV_DETECT)  += dev_detect/
+obj-$(CONFIG_HW_ZEROHUNG) += hwzerohung/

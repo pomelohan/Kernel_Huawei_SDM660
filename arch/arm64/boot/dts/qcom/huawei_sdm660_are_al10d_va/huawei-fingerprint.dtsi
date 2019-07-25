@@ -1,0 +1,20 @@
+&soc {
+        huawei_fingerprint {
+                compatible = "fpc,fingerprint";
+                interrupt-parent = <&tlmm>;
+                interrupts = <72 0x0>;
+                fingerprint,irq_gpio = <&tlmm 72 0>;
+                fingerprint,reset_gpio = <&tlmm 20 0>;
+                fingerprint,navigation_adjust1 = <0>;
+                fingerprint,navigation_adjust2 = <90>;
+                fingerprint,kernel_version = <1>;/* kernel_version = 1 means kernel version is 4.4*/
+                vdd-supply = <&pm660_l13>;
+                fingerprint,vdd = "vdd";
+                avdd-supply = <&pm660l_l3>;
+                fingerprint,avdd = "avdd";
+                fingerprint,avdd-min-uv = <3100000>;
+                fingerprint,avdd-max-uv = <3100000>;
+                status = "ok";
+        };
+};
+

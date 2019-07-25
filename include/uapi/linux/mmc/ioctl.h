@@ -124,6 +124,10 @@ struct mmc_ioc_rpmb {
  * is enforced per ioctl call.  For larger data transfers, use the normal
  * block device operations.
  */
+#ifdef CONFIG_MMC_FFU
+#define MMC_IOC_MAX_BYTES  (1024L * 1024)
+#else
 #define MMC_IOC_MAX_BYTES  (512L * 256)
+#endif
 #define MMC_IOC_MAX_CMDS    255
 #endif /* LINUX_MMC_IOCTL_H */

@@ -1,0 +1,70 @@
+
+qcom,HB4073A5ECW_ATL_Desay_4v4_5000mAh {
+	qcom,max-voltage-uv = <4400000>;
+	qcom,nom-batt-capacity-mah = <5000>;
+	qcom,fastchg-current-ma = <3000>;
+	qcom,batt-id-kohm = <39>;
+	qcom,battery-beta = <3435>;
+	qcom,battery-type = "HB4073A5ECW_ATL_Desay_4v4_5000mAh";
+	qcom,fg-cc-cv-threshold-mv = <4390>;
+	qcom,checksum = <0x4B83>;
+	qcom,gui-version = "PM660GUI - 0.0.0.45";
+	qcom,fg-profile-data = [
+		 36 20 FE 04
+		 DD 0A 00 06
+		 FA 1C 17 FB
+		 2E 05 56 03
+		 DC 17 6B 23
+		 1F 45 51 53
+		 88 00 00 00
+		 12 00 00 00
+		 00 00 64 BD
+		 D7 CD 01 00
+		 19 00 08 00
+		 11 EA 8C ED
+		 D1 FC FA F3
+		 4F 15 A5 FB
+		 5B 06 CA 2B
+		 1E 06 09 20
+		 27 00 14 00
+		 D3 1F 7D 05
+		 94 0A 2C 06
+		 CC 1C DE 02
+		 34 0C 10 12
+		 8A 18 97 23
+		 56 44 97 5A
+		 6C 00 00 00
+		 0F 00 00 00
+		 00 00 B1 D5
+		 9D C3 27 C3
+		 15 00 00 00
+		 D9 EA 8C ED
+		 15 F4 80 00
+		 C2 06 E9 01
+		 6A E4 9A 1A
+		 AB 33 CC FF
+		 07 10 00 00
+		 A4 13 66 46
+		 15 00 40 00
+		 3A 01 0A FA
+		 FF 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+	];
+};

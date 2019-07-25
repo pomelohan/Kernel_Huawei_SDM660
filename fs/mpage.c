@@ -521,7 +521,7 @@ static int __mpage_writepage(struct page *page, struct writeback_control *wbc,
 	struct buffer_head map_bh;
 	loff_t i_size = i_size_read(inode);
 	int ret = 0;
-	int wr = (wbc->sync_mode == WB_SYNC_ALL ?  WRITE_SYNC : WRITE);
+	int wr = wbc_to_write_cmd(wbc);
 
 	if (page_has_buffers(page)) {
 		struct buffer_head *head = page_buffers(page);

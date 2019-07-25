@@ -111,6 +111,12 @@ enum pageflags {
 #ifdef CONFIG_ZCACHE
 	PG_was_active,
 #endif
+#ifdef CONFIG_TASK_PROTECT_LRU
+	PG_protect,
+#endif
+#ifdef CONFIG_NON_SWAP
+	PG_non_swap,
+#endif
 	__NR_PAGEFLAGS,
 
 	/* Filesystems */
@@ -257,6 +263,10 @@ PAGEFLAG(MappedToDisk, mappedtodisk)
 PAGEFLAG(Reclaim, reclaim) TESTCLEARFLAG(Reclaim, reclaim)
 PAGEFLAG(Readahead, reclaim) TESTCLEARFLAG(Readahead, reclaim)
 
+#ifdef CONFIG_NON_SWAP
+PAGEFLAG(NonSwap, non_swap) TESTSCFLAG(NonSwap, non_swap)
+#endif
+
 #ifdef CONFIG_HIGHMEM
 /*
  * Must use a macro here due to header dependency issues. page_zone() is not
@@ -360,6 +370,9 @@ static inline int PageKsm(struct page *page)
 TESTPAGEFLAG_FALSE(Ksm)
 #endif
 
+#ifdef CONFIG_TASK_PROTECT_LRU
+PAGEFLAG(Protect, protect)
+#endif
 u64 stable_page_flags(struct page *page);
 
 static inline int PageUptodate(struct page *page)

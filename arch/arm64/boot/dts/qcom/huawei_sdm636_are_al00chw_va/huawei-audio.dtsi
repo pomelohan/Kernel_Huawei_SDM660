@@ -1,0 +1,394 @@
+
+/ {
+    huawei_audio_info {
+        compatible = "hw,hw_audio_info";
+        product-identifier = "ares";
+        pa_identifier = "smartpakit";
+        smartpa-i2s = <3>;
+        smartpa-num = <2>;
+        speaker-pa = "tfa9871";
+        builtin-master-mic-exist;
+        builtin-second-mic-exist;
+        hand_held_dual_mic_strategy;
+        loud_speaker_second_mic_strategy;
+        voice-vol-level = <10>;
+        cust_name = "audio_custom_v2";
+        dual_smartpa_delay = "true";
+        status = "ok";
+    };
+
+    deviceboxID: deviceboxID@0 {
+        compatible = "huawei,deviceboxID";
+        status = "ok";
+        box_num = <2>;
+        check_mode = "gpio";            /* check mode use gpio */
+        enable_boxID = <1 1 0 0>;       /* enable 2 speaker */
+        gpio_num = <1 1 0 0>;             /* each box has one id gpio */
+        speaker_map = <2 1>;            /*1 means AAC, 2 means GOER */
+        receiver_map = <2 1>;
+        /*speaker ID GPIO configure*/
+        gpio_speakerID = <&tlmm 73 0>;
+        gpio_receiverID = <&tlmm 70 0>;
+        pinctrl-names = "default", "idle";
+        pinctrl-0 = <&speaker_id_default &receiver_id_default>;
+        pinctrl-1 = <&speaker_id_sleep &receiver_id_sleep>;
+    };
+
+    smartpakit {
+        compatible = "huawei,smartpakit";
+        /* 0 hisi, 1 qcom */
+        soc_platform = <1>;
+       /* algo running on: 0 codec_dsp, 1 soc_dsp, 2 smartpa_dsp, 3 simple pa(not smpartpa), 4 simple pa(with i2c) */
+        algo_in = <1>;
+        //algo_delay = <20>;
+        /* algo_in params need match out_device for smartpa.
+        * Now, up to only support four pa, so out_device = <0 0 0 0>;
+        * 1. This array is arranged in the following order:
+        *    <0 1 2 3>
+        *    <pril prir secl secr>
+        * 2. This array element value is 0 or 1:
+        *    smartpa: 0 speaker, 1 receiver
+        *    simple pa: out_device not applicable, only set 0 to indicate pa_num
+        * 3. The length of this array is variable, for example:
+        *    single pa: out_device = <0>;
+       *    two pa: out_device = <0 0>;
+        *    four pa: out_device = <1 1 0 0>; */
+        out_device = <0 1>;
+        status = "ok";
+    };
+};
+
+/* add spk-box pinctrl */
+&tlmm {
+    speaker_box_id_pin {
+        speaker_id_default: speaker_default {
+            mux {
+                pins = "gpio73";
+                function = "gpio";
+            };
+            config {
+                pins = "gpio73";
+                drive-strength = <2>;
+                bias-pull-up;
+            };
+        };
+
+        speaker_id_sleep: speaker_sleep {
+            mux {
+                pins = "gpio73";
+                function = "gpio";
+            };
+            config {
+                pins = "gpio73";
+                drive-strength = <2>;
+                bias-pull-down;
+            };
+        };
+    };
+    receiver_box_id_pin {
+        receiver_id_default: receiver_default {
+            mux {
+                pins = "gpio70";
+                function = "gpio";
+            };
+            config {
+                pins = "gpio70";
+                drive-strength = <2>;
+                bias-pull-up;
+            };
+        };
+
+        receiver_id_sleep: receiver_sleep {
+            mux {
+                pins = "gpio70";
+                function = "gpio";
+            };
+            config {
+                pins = "gpio70";
+                drive-strength = <2>;
+                bias-pull-down;
+            };
+        };
+    };
+};
+
+&lpi_tlmm {
+    compatible = "qcom,lpi-pinctrl";
+    /* ter mi2s */
+    ter_mi2s_clk_active: ter_mi2s_clk_active {
+        mux {
+            pins = "gpio4";
+            function = "func4";
+        };
+
+        config {
+            pins = "gpio4";
+            drive-strength = <8>;
+        };
+    };
+
+    ter_mi2s_clk_sleep: ter_mi2s_clk_sleep {
+        mux {
+            pins = "gpio4";
+            function = "func4";
+        };
+
+        config {
+            pins = "gpio4";
+            drive-strength = <2>;
+        };
+    };
+
+    ter_mi2s_ws_active: ter_mi2s_ws_active {
+        mux {
+            pins = "gpio5";
+            function = "func4";
+        };
+
+        config {
+            pins = "gpio5";
+            drive-strength = <8>;
+        };
+    };
+
+    ter_mi2s_ws_sleep: ter_mi2s_ws_sleep {
+        mux {
+            pins = "gpio5";
+            function = "func4";
+        };
+
+        config {
+            pins = "gpio5";
+            drive-strength = <2>;
+        };
+    };
+    ter_mi2s_sd0_active: ter_mi2s_sd0_active {
+        mux {
+            pins = "gpio6";
+            function = "func4";
+        };
+
+        config {
+            pins = "gpio6";
+            drive-strength = <8>;
+        };
+    };
+
+    ter_mi2s_sd0_sleep: ter_mi2s_sd0_sleep {
+        mux {
+            pins = "gpio6";
+            function = "func4";
+        };
+
+        config {
+            pins = "gpio6";
+            drive-strength = <2>;
+        };
+    };
+    ter_mi2s_sd1_active: ter_mi2s_sd1_active {
+        mux {
+            pins = "gpio7";
+            function = "func4";
+        };
+
+        config {
+            pins = "gpio7";
+            drive-strength = <8>;
+        };
+    };
+
+    ter_mi2s_sd1_sleep: ter_mi2s_sd1_sleep {
+        mux {
+            pins = "gpio7";
+            function = "func4";
+        };
+
+        config {
+            pins = "gpio7";
+            drive-strength = <2>;
+        };
+    };
+};
+
+&soc {
+    qcom,msm-dai-mi2s {
+        compatible = "qcom,msm-dai-mi2s";
+        dai_mi2s2: qcom,msm-dai-q6-mi2s-tert {
+            compatible = "qcom,msm-dai-q6-mi2s";
+            qcom,msm-dai-q6-mi2s-dev-id = <2>;
+            qcom,msm-mi2s-rx-lines = <2>;
+            qcom,msm-mi2s-tx-lines = <1>;
+        };
+    };
+    tert_mi2s_gpios: tert_mi2s_pinctrl {
+        compatible = "qcom,msm-cdc-pinctrl";
+        pinctrl-names = "aud_active", "aud_sleep";
+        pinctrl-0 = <&ter_mi2s_clk_active &ter_mi2s_ws_active
+                &ter_mi2s_sd0_active &ter_mi2s_sd1_active>;
+        pinctrl-1 = <&ter_mi2s_clk_sleep &ter_mi2s_ws_sleep
+                &ter_mi2s_sd0_sleep &ter_mi2s_sd1_sleep>;
+        qcom,lpi-gpios;
+    };
+};
+
+&i2c_1 {
+    status = "okay";
+    /*speaker*/
+    tfa9871_smartpa_l:smartpa@34{
+        compatible = "huawei,smartpakit_i2c";
+        reg = <0x34>;
+        /* 0 MAXIM, 1 NXP, 2 TI, 3 OTHER */
+        chip_vendor = <1>;
+        /* refer to smartpakit.out_device prop */
+        chip_id = <0>;
+        chip_model = "tfa9871";
+        status = "ok";
+
+        /* reg_ctl node: a node contains three data<addr value ctl_type>
+        * ctl_type: 0 read reg(default), 1 write reg, 2 only time delay
+        * value:
+        *     read:  reg number(num >= 1)
+        *     write: reg value
+        *     delay: time delay
+        * time delay unit: msecs */
+        version_regs = <0x03 1 0>;
+        dump_regs = <0 256 0>;
+
+        hw_reset {
+            gpio_reset = <&tlmm 0 0x01>;
+            /* gpio_state node: a node contains two data<state delay>
+            * time delay unit: msecs */
+            ctl_sequence = <1 1 0 1>;
+        };
+
+        irq_handler {
+            gpio_irq = <&tlmm 1 0x01>;
+            /* 0x0 IRQF_TRIGGER_NONE, 0x1 IRQF_TRIGGER_RISING, 0x2 IRQF_TRIGGER_FALLING, 0x4 IRQF_TRIGGER_HIGH, 0x8 IRQF_TRIGGER_LOW*/
+            irq_flags = <2>;
+            /* whether or not need reset chip*/
+            need_reset;
+            rw_sequence = <
+                0x10 1 0
+                0x11 1 0
+                0x13 1 0
+                0x14 1 0
+                0x40 1 0
+                0x41 1 0
+                0x42 1 0
+            >;
+        };
+
+        regmap_cfg {
+            reg_bits = <8>;
+            val_bits = <16>;
+            /* 0 REGCACHE_NONE, 1 REGCACHE_RBTREE, 2 REGCACHE_COMPRESSED, 3 REGCACHE_FLAT */
+            cache_type = <0>;
+            max_register = <0xff>;
+            reg_defaults = <
+                0x00 0x1801
+                0x01 0x0014
+            >;
+        };
+    };
+
+    tfa9871_smartpa_r:smartpa@36{
+        compatible = "huawei,smartpakit_i2c";
+        reg = <0x36>;
+        /* 0 MAXIM, 1 NXP, 2 TI, 3 OTHER */
+        chip_vendor = <1>;
+        /* refer to smartpakit.out_device prop */
+        chip_id = <1>;
+        chip_model = "tfa9871";
+        status = "ok";
+
+        /* reg_ctl node: a node contains three data<addr value ctl_type>
+        * ctl_type: 0 read reg(default), 1 write reg, 2 only time delay
+        * value:
+        *     read:  reg number(num >= 1)
+        *     write: reg value
+        *     delay: time delay
+        * time delay unit: msecs */
+        version_regs = <0x03 1 0>;
+        dump_regs = <0 256 0>;
+
+        hw_reset {
+            gpio_reset = <&tlmm 12 0x01>;
+            /* gpio_state node: a node contains two data<state delay>
+            * time delay unit: msecs */
+            ctl_sequence = <1 1 0 1>;
+        };
+
+        irq_handler {
+            gpio_irq = <&tlmm 13 0x01>;
+            /* 0x0 IRQF_TRIGGER_NONE, 0x1 IRQF_TRIGGER_RISING, 0x2 IRQF_TRIGGER_FALLING, 0x4 IRQF_TRIGGER_HIGH, 0x8 IRQF_TRIGGER_LOW*/
+            irq_flags = <2>;
+            /* whether or not need reset chip*/
+            need_reset;
+            rw_sequence = <
+                0x10 1 0
+                0x11 1 0
+                0x13 1 0
+                0x14 1 0
+                0x40 1 0
+                0x41 1 0
+                0x42 1 0
+            >;
+        };
+
+        regmap_cfg {
+            reg_bits = <8>;
+            val_bits = <16>;
+            /* 0 REGCACHE_NONE, 1 REGCACHE_RBTREE, 2 REGCACHE_COMPRESSED, 3 REGCACHE_FLAT */
+            cache_type = <0>;
+            max_register = <0xff>;
+            reg_defaults = <
+                0x00 0x1801
+                0x01 0x0014
+            >;
+        };
+    };
+};
+
+&cdc_dmic_gpios {
+    status = "disabled";
+};
+
+&int_codec {
+    status = "okay";
+    qcom,model = "sdm660-snd-card-mtp";
+    qcom,msm-mbhc-hphl-swh = <1>;
+    qcom,msm-mbhc-gnd-swh = <1>;
+    qcom,msm-hs-micbias-type = "internal";
+    qcom,wsa-disable;
+    qcom,msm-micbias1-ext-cap;
+    qcom,msm-micbias2-ext-cap;
+    qcom,tert-mi2s-gpios = <&tert_mi2s_gpios>;
+    qcom,audio-routing =
+        "RX_BIAS", "INT_MCLK0",
+        "SPK_RX_BIAS", "INT_MCLK0",
+        "INT_LDO_H", "INT_MCLK0",
+        "RX_I2S_CLK", "INT_MCLK0",
+        "TX_I2S_CLK", "INT_MCLK0",
+        "MIC BIAS External", "Handset Mic",
+        "MIC BIAS Internal2", "Headset Mic",
+        "MIC BIAS External", "Secondary Mic",
+        "AMIC1", "MIC BIAS External",
+        "AMIC2", "MIC BIAS Internal2",
+        "AMIC3", "MIC BIAS External",
+        "DMIC1", "MIC BIAS External",
+        "MIC BIAS External", "Digital Mic1",
+        "DMIC2", "MIC BIAS External",
+        "MIC BIAS External", "Digital Mic2",
+        "DMIC3", "MIC BIAS External",
+        "MIC BIAS External", "Digital Mic3",
+        "DMIC4", "MIC BIAS External",
+        "MIC BIAS External", "Digital Mic4",
+        "SpkrLeft IN", "SPK1 OUT",
+        "SpkrRight IN", "SPK2 OUT",
+        "PDM_IN_RX1", "PDM_OUT_RX1",
+        "PDM_IN_RX2", "PDM_OUT_RX2",
+        "PDM_IN_RX3", "PDM_OUT_RX3",
+        "ADC1_IN", "ADC1_OUT",
+        "ADC2_IN", "ADC2_OUT",
+        "ADC3_IN", "ADC3_OUT";
+};

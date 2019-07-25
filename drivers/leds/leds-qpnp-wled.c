@@ -231,6 +231,10 @@
 #define NUM_SUPPORTED_OVP_THRESHOLDS	4
 #define NUM_SUPPORTED_ILIM_THRESHOLDS	8
 
+#ifdef CONFIG_LCDKIT_DRIVER
+bool lcdkit_is_default_panel(void);
+#endif
+
 #define QPNP_WLED_AVDD_MV_TO_REG(val) \
 		((val - QPNP_WLED_AVDD_MIN_MV) / QPNP_WLED_AVDD_STEP_MV)
 
@@ -938,6 +942,13 @@ static void qpnp_wled_work(struct work_struct *work)
 	level = wled->cdev.brightness;
 
 	mutex_lock(&wled->lock);
+
+#ifdef CONFIG_LCDKIT_DRIVER
+   if(lcdkit_is_default_panel()){
+       level = 0;
+   }
+   dev_err(&wled->pdev->dev, "[qpnp_wled_work]wled set level %d \r\n",level);
+#endif
 
 	if (level) {
 		rc = qpnp_wled_set_level(wled, level);

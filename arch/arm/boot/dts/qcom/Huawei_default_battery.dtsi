@@ -1,0 +1,70 @@
+
+qcom,qrd-4v4-5000mAh-sdm636-default-data {
+	qcom,max-voltage-uv = <4400000>;
+	qcom,nom-batt-capacity-mah = <5000>;
+	qcom,fastchg-current-ma = <3000>;
+	qcom,batt-id-kohm = <1000>;
+	qcom,battery-beta = <3435>;
+	qcom,battery-type = "Sony_scud_default";
+	qcom,fg-cc-cv-threshold-mv = <4390>;
+	qcom,checksum = <0x203E>;
+	qcom,gui-version = "PM660GUI - 0.0.0.45";
+	qcom,fg-profile-data = [
+		 67 1E 1B 07
+		 68 02 A5 07
+		 D2 1C 21 02
+		 5A 0D 18 0B
+		 BA 17 F4 23
+		 2A 44 8D 5A
+		 64 00 00 00
+		 10 00 00 00
+		 00 00 01 00
+		 A2 CD 90 B2
+		 16 00 08 00
+		 66 DA C5 E5
+		 A7 05 A3 01
+		 84 15 59 03
+		 5F ED C2 2B
+		 28 06 09 20
+		 27 00 14 00
+		 5E 1F 2D 06
+		 C4 03 F9 FD
+		 C2 1C FE 02
+		 FB 15 2E 12
+		 84 18 D3 23
+		 E9 4D 2C 5B
+		 68 00 00 00
+		 0E 00 00 00
+		 00 00 FC D5
+		 05 00 51 A4
+		 10 00 00 00
+		 44 E3 C5 E5
+		 7E 06 F1 F3
+		 EB 06 6E 02
+		 AB F4 B9 22
+		 BD 33 CC FF
+		 07 10 00 00
+		 B0 13 66 46
+		 10 00 40 00
+		 60 01 0A FA
+		 FF 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 00 00 00 00
+	];
+};

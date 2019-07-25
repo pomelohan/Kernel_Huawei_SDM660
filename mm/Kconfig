@@ -61,6 +61,14 @@ config SPARSEMEM_MANUAL
 
 endchoice
 
+config SHRINK_MEMORY
+     bool "Allow for system-wide shrinking of memory"
+     default n
+     depends on MMU
+     help
+     It ebable support for system-wide memory reclaim in one shot using
+     echo 1 > /proc/sys/vm/shrink_memory
+
 config DISCONTIGMEM
 	def_bool y
 	depends on (!SELECT_MEMORY_MODEL && ARCH_DISCONTIGMEM_ENABLE) || DISCONTIGMEM_MANUAL
@@ -707,6 +715,15 @@ config ZONE_DEVICE
 config FRAME_VECTOR
 	bool
 
+config LATE_UNMAP
+	bool
+	depends on SWAP
+
+config NON_SWAP
+	bool
+	depends on SWAP
+	select LATE_UNMAP
+
 config FORCE_ALLOC_FROM_DMA_ZONE
 	bool "Force certain memory allocators to always return ZONE_DMA memory"
 	depends on ZONE_DMA
@@ -732,3 +749,60 @@ config PROCESS_RECLAIM
 	 (addr, addr + size-bytes) of the process.
 
 	 Any other vaule is ignored.
+
+config HUAWEI_SWAP_ZDATA
+	bool "Compressed data to swap"
+	depends on SWAP
+	depends on PROCESS_RECLAIM
+	default n
+	help
+	  Save compressed data to swap page.
+
+	  If unsure, say Y to enable swap_zdata.
+
+config HUAWEI_DIRECT_SWAPPINESS
+	bool "Allow to adjust direct reclaim swappiness"
+	depends on SWAP && PROC_FS
+	default n
+	help
+	  Used to adjust direct reclaim cmpress priority by /proc/sys/vm/direct_swappiness.
+
+	  only 0 to 60 is valid. If unsure, say N to use it's original value(60).
+
+config DEBUG_VMALLOC
+	bool "Enable VMALLOC debugging support"
+	help
+	  This enables the inclusion of a few debugging parameters, which
+	  are the PID and the name of the task requesting vmalloc.
+
+	  Disabling these can result in savings in code size.
+
+config HUAWEI_UNMOVABLE_ISOLATE
+	bool "Isolate the unmovable memory."
+
+	default n
+	  help
+	  Isolate the unmovable memory from others migrate types.
+	  So that we can improve the success rate of compact.
+
+	  If unsure, say "n".
+
+config HUAWEI_UNMOVABLE_ISOLATE1_SIZE_MBYTES
+	int "Size in Mega Bytes For UNMOVABLE_ISOLATE1"
+	depends on HUAWEI_UNMOVABLE_ISOLATE
+	default 64
+	help
+	  Defines the size (in MiB) of the default memory area for
+	  MIGRATE_UNMOVABLE_ISOLATE1 Memory Allocator. However,
+	  we should parse the size from /proc/cmdline firstly.
+
+config HUAWEI_UNMOVABLE_ISOLATE2_SIZE_MBYTES
+	int "Size in Mega Bytes For UNMOVABLE_ISOLATE2"
+	depends on HUAWEI_UNMOVABLE_ISOLATE
+	default 64
+	help
+	  Defines the size (in MiB) of the default memory area for
+	  MIGRATE_UNMOVABLE_ISOLATE2 Memory Allocator. However,
+	  we should parse the size from /proc/cmdline firstly.
+
+source "mm/hisi/Kconfig"

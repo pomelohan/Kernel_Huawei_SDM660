@@ -116,6 +116,8 @@ struct mmc_request {
 #endif
 };
 
+struct mmc_card;
+
 struct mmc_bus_ops {
 	void (*remove)(struct mmc_host *);
 	void (*detect)(struct mmc_host *);
@@ -131,9 +133,12 @@ struct mmc_bus_ops {
 	int (*shutdown)(struct mmc_host *);
 	int (*reset)(struct mmc_host *);
 	int (*change_bus_speed)(struct mmc_host *, unsigned long *);
+#ifdef CONFIG_MMC_PASSWORDS
+	int (*sysfs_add)(struct mmc_host *, struct mmc_card *card);
+	void (*sysfs_remove)(struct mmc_host *, struct mmc_card *card);
+#endif
 };
 
-struct mmc_card;
 struct mmc_async_req;
 struct mmc_cmdq_req;
 

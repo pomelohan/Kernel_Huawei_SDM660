@@ -52,6 +52,8 @@ struct swap_info_struct;
 struct seq_file;
 struct workqueue_struct;
 struct iov_iter;
+struct fscrypt_info;
+struct fscrypt_operations;
 
 extern void __init inode_init(void);
 extern void __init inode_init_early(void);
@@ -189,6 +191,9 @@ typedef void (dax_iodone_t)(struct buffer_head *bh_map, int uptodate);
  * WRITE_FLUSH_FUA	Combination of WRITE_FLUSH and FUA. The IO is preceded
  *			by a cache flush and data is guaranteed to be on
  *			non-volatile media on completion.
+ * WRITE_BG		Background write. This is for background activity like
+ *			the periodic flush and background threshold writeback
+ *
  *
  */
 #define RW_MASK			REQ_WRITE
@@ -206,11 +211,15 @@ typedef void (dax_iodone_t)(struct buffer_head *bh_map, int uptodate);
 					REQ_BARRIER)
 #define WRITE_FUA		(WRITE | REQ_SYNC | REQ_NOIDLE | REQ_FUA)
 #define WRITE_FLUSH_FUA		(WRITE | REQ_SYNC | REQ_NOIDLE | REQ_FLUSH | REQ_FUA)
+
 #define WRITE_POST_FLUSH_BARRIER	(WRITE | REQ_SYNC | REQ_NOIDLE | \
 					 REQ_POST_FLUSH_BARRIER | REQ_BARRIER)
 #define WRITE_ORDERED_FLUSH_BARRIER	(WRITE | REQ_SYNC | REQ_NOIDLE | \
 					 REQ_FLUSH | REQ_POST_FLUSH_BARRIER | \
 					 REQ_BARRIER)
+
+#define WRITE_BG		(WRITE | REQ_NOIDLE | REQ_BG)
+
 
 /*
  * Attribute flags.  These should be or-ed together to figure out what
@@ -687,7 +696,14 @@ struct inode {
 	struct hlist_head	i_fsnotify_marks;
 #endif
 
+#if IS_ENABLED(CONFIG_FS_ENCRYPTION)
+	struct fscrypt_info	*i_crypt_info;
+#endif
 	void			*i_private; /* fs or device private pointer */
+
+#ifdef CONFIG_TASK_PROTECT_LRU
+	int			i_protect;
+#endif
 };
 
 static inline unsigned int i_blocksize(const struct inode *node)
@@ -1351,6 +1367,7 @@ struct super_block {
 #endif
 	const struct xattr_handler **s_xattr;
 
+	const struct fscrypt_operations	*s_cop;
 	struct hlist_bl_head	s_anon;		/* anonymous dentries for (nfs) exporting */
 	struct list_head	s_mounts;	/* list of mounts; _not_ for fs use */
 	struct block_device	*s_bdev;
@@ -1782,6 +1799,10 @@ struct super_operations {
 				  struct shrink_control *);
 	long (*free_cached_objects)(struct super_block *,
 				    struct shrink_control *);
+
+#ifdef CONFIG_F2FS_JOURNAL_APPEND
+	void (*flush_mbio)(struct super_block *sb );
+#endif
 };
 
 /*
@@ -2691,6 +2712,20 @@ extern void inode_sb_list_add(struct inode *inode);
 #ifdef CONFIG_BLOCK
 extern blk_qc_t submit_bio(int, struct bio *);
 extern int bdev_read_only(struct block_device *);
+#endif
+#ifdef CONFIG_BLK_DEV_THROTTLING
+#define THROTL_WB_SYNC_PAGE_CNT	128
+#define THROTL_WB_SYNC_BIO_CNT	8
+extern bool blk_throtl_get_quota(struct block_device *,
+				 unsigned int, unsigned long, bool);
+#else
+static inline bool blk_throtl_get_quota(struct block_device *bdev,
+					unsigned int size,
+					unsigned long jiffies_time_out,
+					bool wait)
+{
+	return true;
+}
 #endif
 extern int set_blocksize(struct block_device *, int);
 extern int sb_set_blocksize(struct super_block *, int);

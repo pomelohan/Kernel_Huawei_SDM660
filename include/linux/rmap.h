@@ -12,8 +12,15 @@
 
 extern int isolate_lru_page(struct page *page);
 extern void putback_lru_page(struct page *page);
+
+#ifdef CONFIG_HUAWEI_SWAP_ZDATA
+extern unsigned long reclaim_pages_from_list(struct list_head *page_list,
+					struct vm_area_struct *vma, bool hiber,
+					unsigned *nr_writedblock);
+#else
 extern unsigned long reclaim_pages_from_list(struct list_head *page_list,
 					     struct vm_area_struct *vma);
+#endif
 
 /*
  * The anon_vma heads a list of private "related" vmas, to scan if
@@ -90,6 +97,11 @@ enum ttu_flags {
 	TTU_UNMAP = 1,			/* unmap mode */
 	TTU_MIGRATION = 2,		/* migration mode */
 	TTU_MUNLOCK = 4,		/* munlock mode */
+
+#ifdef CONFIG_LATE_UNMAP
+	TTU_CHECK_DIRTY = (1 << 5),	/* Check dirty mode */
+	TTU_READONLY = (1 << 6),	/* Change readonly mode */
+#endif
 
 	TTU_IGNORE_MLOCK = (1 << 8),	/* ignore mlock */
 	TTU_IGNORE_ACCESS = (1 << 9),	/* don't age */

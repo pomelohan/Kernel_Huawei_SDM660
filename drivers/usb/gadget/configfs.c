@@ -9,6 +9,8 @@
 #include "u_f.h"
 #include "u_os_desc.h"
 #include "debug.h"
+#include <chipset_common/hwusb/hw_usb_rwswitch.h>
+#include <chipset_common/hwusb/hw_usb_sync_host_time.h>
 
 #ifdef CONFIG_USB_CONFIGFS_UEVENT
 #include <linux/platform_device.h>
@@ -94,6 +96,7 @@ struct gadget_info {
 	bool connected;
 	bool sw_connected;
 	struct work_struct work;
+	struct delayed_work switch_work;
 	struct device *dev;
 #endif
 };
@@ -1469,6 +1472,104 @@ static void android_work(struct work_struct *data)
 	}
 }
 #endif
+static struct workqueue_struct *switch_wq;
+
+static void switch_delay_work(struct work_struct *data)
+{
+	int state = 0;
+	state = hw_usb_port_switch_request(14);
+	pr_err("switch prot\n");
+
+
+}
+
+static struct usb_ctrlrequest android_ctrl_request;
+
+static int hw_ep0_handler(struct usb_composite_dev *cdev,
+			const struct usb_ctrlrequest *ctrl)
+{
+	struct usb_request *req = cdev->req;
+	u16     w_index  = le16_to_cpu(ctrl->wIndex);
+	u16     w_value  = le16_to_cpu(ctrl->wValue);
+	u16     w_length = le16_to_cpu(ctrl->wLength);
+	int     value    = -EOPNOTSUPP;
+	struct gadget_info *gi = container_of(cdev, struct gadget_info, cdev);
+
+	/*
+	 * for MBB spec command such like "40 A2",
+	 * to support any other commands, add here.
+	 */
+
+	switch (ctrl->bRequestType) {
+	case (USB_DIR_OUT | USB_TYPE_VENDOR):
+		switch (ctrl->bRequest) {
+		case (USB_REQ_SEND_HOST_TIME):
+			/*
+			 * "40 A1"-The host sends sys-time to device
+			 */
+			memcpy((void *)&android_ctrl_request, (void *)ctrl,
+					sizeof(struct usb_ctrlrequest));
+			req->context = &android_ctrl_request;
+			req->complete = hw_usb_handle_host_time;
+			cdev->gadget->ep0->driver_data = cdev;
+			value = w_length;
+			break;
+
+		default:
+			pr_warn("invalid control req%02x.%02x v%04x i%04x l%d\n",
+				ctrl->bRequestType, ctrl->bRequest,    w_value, w_index, w_length);
+			break;
+		}
+		break;
+
+	case (USB_DIR_IN|USB_TYPE_VENDOR|USB_RECIP_DEVICE):
+		switch (ctrl->bRequest) {
+		case USB_REQ_VENDOR_SWITCH_MODE: {
+				int mode = 0, state = 0;
+				if ((ctrl->bRequestType != (USB_DIR_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE))
+					|| (w_index != 0)){
+					goto unknown;
+				}
+				/* Handle vendor customized request */
+				pr_err("vendor request: %d index: %d value: %d length: %d\n",
+						ctrl->bRequest, w_index, w_value, w_length);
+
+				mode = hw_usb_port_mode_get();
+				/* INDEX_FACTORY_REWORK stands for manufacture,adb */
+				if (INDEX_FACTORY_REWORK == w_value) {
+					queue_delayed_work(switch_wq,&gi->switch_work,500);
+				}
+				value = min(w_length, (u16)(sizeof(mode) + sizeof(state)));
+				memcpy(req->buf, &state, value / 2);
+				memcpy(req->buf + value / 2, &mode, value / 2);
+			}
+			break;
+
+		default:
+			break;
+		}
+
+		break;
+
+	default:
+unknown:
+		pr_warn("invalid control req%02x.%02x v%04x i%04x l%d\n",
+			ctrl->bRequestType, ctrl->bRequest, w_value, w_index, w_length);
+		break;
+	}
+
+	/* respond with data transfer or status phase? */
+	if (value >= 0) {
+		req->zero = 0;
+		req->length = value;
+		value = usb_ep_queue(cdev->gadget->ep0, req, GFP_ATOMIC);
+		if (value < 0) {
+			pr_warn("android_setup_config response err 0x%x\n", value);
+		}
+	}
+
+	return value;
+}
 
 static void configfs_composite_unbind(struct usb_gadget *gadget)
 {
@@ -1512,6 +1613,10 @@ static int android_setup(struct usb_gadget *gadget,
 				break;
 		}
 	}
+
+	if (value < 0){
+		value = hw_ep0_handler(cdev, c);
+  	}
 
 #ifdef CONFIG_USB_CONFIGFS_F_ACC
 	if (value < 0)
@@ -1643,6 +1748,14 @@ static int android_device_create(struct gadget_info *gi)
 			return err;
 		}
 	}
+
+#ifdef CONFIG_HW_GADGET
+	hw_usb_sync_host_time_init();
+	hw_rwswitch_create_device(android_device, android_class);
+	hw_usb_get_device(android_device);	
+	switch_wq = create_singlethread_workqueue("usb_switch_port_wq");
+	INIT_DELAYED_WORK(&gi->switch_work, switch_delay_work);
+#endif
 
 	return 0;
 }

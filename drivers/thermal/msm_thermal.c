@@ -50,12 +50,18 @@
 #include <linux/uaccess.h>
 #include <linux/uio_driver.h>
 #include <linux/io.h>
-
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+#include <linux/rainbow_reset_detect_api.h>
+#endif
 #include <asm/cacheflush.h>
 
 #define CREATE_TRACE_POINTS
 #define TRACE_MSM_THERMAL
 #include <trace/trace_thermal.h>
+
+#ifdef CONFIG_HUAWEI_RESET_DETECT
+#include <linux/huawei_reset_detect.h>
+#endif
 
 #define MSM_LIMITS_DCVSH		0x10
 #define MSM_LIMITS_NODE_DCVS		0x44435653
@@ -2858,6 +2864,14 @@ static void msm_thermal_bite(int zone_id, int temp)
 		pr_err("Tsens:%d reached temperature:%d. System reset\n",
 			tsens_id, temp);
 	}
+#ifdef CONFIG_HUAWEI_RESET_DETECT
+	set_reset_magic(RESET_MAGIC_THERMAL);
+#endif
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+		rainbow_reset_detect_m_reason_set(FD_M_APANIC);
+		rainbow_reset_detect_s_reason_set(FD_S_APANIC_THERMAL);
+		rainbow_reset_detect_s_reason_str_set("Thermal_Err");
+#endif
 	/* If it is a secure device ignore triggering the thermal bite. */
 	if (!scm_is_secure_device())
 		return;

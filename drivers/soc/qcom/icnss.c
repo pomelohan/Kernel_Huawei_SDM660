@@ -1389,7 +1389,7 @@ static int wlfw_cap_send_sync_msg(void)
 	if (!penv || !penv->wlfw_clnt)
 		return -ENODEV;
 
-	icnss_pr_dbg("Sending capability message, state: 0x%lx\n", penv->state);
+	icnss_pr_info("Sending capability message, state: 0x%lx\n", penv->state);
 
 	memset(&resp, 0, sizeof(resp));
 
@@ -1435,7 +1435,7 @@ static int wlfw_cap_send_sync_msg(void)
 		strlcpy(penv->fw_build_id, resp.fw_build_id,
 			QMI_WLFW_MAX_BUILD_ID_LEN_V01 + 1);
 
-	icnss_pr_dbg("Capability, chip_id: 0x%x, chip_family: 0x%x, board_id: 0x%x, soc_id: 0x%x, fw_version: 0x%x, fw_build_timestamp: %s, fw_build_id: %s",
+	icnss_pr_info("Capability, chip_id: 0x%x, chip_family: 0x%x, board_id: 0x%x, soc_id: 0x%x, fw_version: 0x%x, fw_build_timestamp: %s, fw_build_id: %s",
 		     penv->chip_info.chip_id, penv->chip_info.chip_family,
 		     penv->board_info.board_id, penv->soc_info.soc_id,
 		     penv->fw_version_info.fw_version,
@@ -1467,7 +1467,7 @@ static int wlfw_wlan_mode_send_sync_msg(enum wlfw_driver_mode_enum_v01 mode)
 	    mode == QMI_WLFW_OFF_V01)
 		return 0;
 
-	icnss_pr_dbg("Sending Mode request, state: 0x%lx, mode: %d\n",
+	icnss_pr_info("Sending Mode request, state: 0x%lx, mode: %d\n",
 		     penv->state, mode);
 
 	memset(&req, 0, sizeof(req));
@@ -1521,7 +1521,7 @@ static int wlfw_wlan_cfg_send_sync_msg(struct wlfw_wlan_cfg_req_msg_v01 *data)
 	if (!penv || !penv->wlfw_clnt)
 		return -ENODEV;
 
-	icnss_pr_dbg("Sending config request, state: 0x%lx\n", penv->state);
+	icnss_pr_info("Sending config request, state: 0x%lx\n", penv->state);
 
 	memset(&req, 0, sizeof(req));
 	memset(&resp, 0, sizeof(resp));
@@ -1693,7 +1693,7 @@ static int wlfw_athdiag_write_send_sync_msg(struct icnss_priv *priv,
 		goto out;
 	}
 
-	icnss_pr_dbg("Diag write: state 0x%lx, offset %x, mem_type %x, data_len %u, data %p\n",
+	icnss_pr_info("Diag write: state 0x%lx, offset %x, mem_type %x, data_len %u, data %p\n",
 		     priv->state, offset, mem_type, data_len, data);
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
@@ -2230,7 +2230,10 @@ static int icnss_driver_event_fw_ready_ind(void *data)
 	if (test_bit(ICNSS_PD_RESTART, &penv->state))
 		ret = icnss_pd_restart_complete(penv);
 	else
+		{
 		ret = icnss_call_driver_probe(penv);
+        icnss_pr_info("WLAN FW is ready goto probe\n");
+	}
 
 out:
 	return ret;

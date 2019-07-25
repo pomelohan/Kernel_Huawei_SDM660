@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/input/qpnp-power-on.h>
 #include <linux/of_address.h>
+#include <linux/syscalls.h>
 
 #include <asm/cacheflush.h>
 #include <asm/system_misc.h>
@@ -35,6 +36,17 @@
 #include <soc/qcom/watchdog.h>
 #include <soc/qcom/minidump.h>
 
+#ifdef CONFIG_HUAWEI_RESET_DETECT
+#include <linux/huawei_reset_detect.h>
+#endif
+
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+#include <linux/rainbow_reset_detect_api.h>
+#endif
+
+#ifdef CONFIG_HUAWEI_BFM
+#include <chipset_common/bfmr/bfm/chipsets/qcom/bfm_qcom.h>
+#endif
 #define EMERGENCY_DLOAD_MAGIC1    0x322A4F99
 #define EMERGENCY_DLOAD_MAGIC2    0xC67E4350
 #define EMERGENCY_DLOAD_MAGIC3    0x77777777
@@ -48,6 +60,10 @@
 #define SCM_DLOAD_CMD			0x10
 #define SCM_DLOAD_MINIDUMP		0X20
 #define SCM_DLOAD_BOTHDUMPS	(SCM_DLOAD_MINIDUMP | SCM_DLOAD_FULLDUMP)
+
+#define USB_UPDATE_POLL_TIME  2000
+#define SDUPDATE_FLAG_MAGIC_NUM  0x77665528
+#define USB_REBOOT_NODE  "/sys/kernel/usb_update"
 
 static int restart_mode;
 static void *restart_reason;
@@ -157,6 +173,70 @@ static bool get_dload_mode(void)
 	return dload_mode_enabled;
 }
 
+static ssize_t usb_update_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%s", "ready");
+}
+
+static struct kobj_attribute usbupdate_attr = __ATTR_RO(usb_update);
+
+static struct attribute *usb_update_attrs[] = {
+	&usbupdate_attr.attr,
+	NULL,
+};
+
+static struct attribute_group usb_update_group = {
+	.attrs = usb_update_attrs,
+};
+
+/* This function write usb_update sign to the misc partion,
+   if write successfull, then hard restart the device. */
+void huawei_reboot_usbupdate(void)
+{
+	int ret = 0;
+	if( 0 != sys_access(USB_REBOOT_NODE, 0))
+	{
+		pr_err("access kobject %s fail, try to make it", USB_REBOOT_NODE);
+
+		ret = sysfs_create_group(kernel_kobj, &usb_update_group);
+		if (ret) {
+			pr_err("%s:Error in creation sysfs_create_group\n", __func__);
+		}
+		return;
+	}
+
+	sys_sync();
+}
+/* This function poll the address restart_reason,if
+   there is the magic SDUPDATE_FLAG_MAGIC_NUM, restart
+   the devices, the magic is written by modem when the
+   user click the usb update tool to update. */
+int usb_update_thread(void *__unused)
+{
+	unsigned int  dload_magic = 0;
+	for(;;)
+	{
+		if(NULL != restart_reason)
+		{
+			dload_magic = __raw_readl(restart_reason);
+		}
+		else
+		{
+			pr_err("restart_reason is null,wait for ready\n");
+		}
+
+		if(SDUPDATE_FLAG_MAGIC_NUM == dload_magic)
+		{
+			pr_err("update mode, restart to usb update\n");
+			huawei_reboot_usbupdate();
+		}
+
+		msleep(USB_UPDATE_POLL_TIME);
+	}
+	return 0;
+}
+
+#ifdef CONFIG_HUAWEI_KERNEL_DEBUG
 static void enable_emergency_dload_mode(void)
 {
 	int ret;
@@ -181,7 +261,7 @@ static void enable_emergency_dload_mode(void)
 	if (ret)
 		pr_err("Failed to set secure EDLOAD mode: %d\n", ret);
 }
-
+#endif
 static int dload_set(const char *val, struct kernel_param *kp)
 {
 	int ret;
@@ -282,15 +362,38 @@ static void msm_restart_prepare(const char *cmd)
 	set_dload_mode(download_mode &&
 			(in_panic || restart_mode == RESTART_DLOAD));
 #endif
+#ifdef CONFIG_HUAWEI_RESET_DETECT
+	/* if the restart is triggered by panic, keep the magic number
+	* if the restart is a nomal reboot, clear the reset magic number*/
+	if(!in_panic)
+	{
+		clear_reset_magic();
+	}
+#endif
 
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+	if(!in_panic)
+	{
+		rainbow_reset_detect_m_reason_set(FD_M_NORMAL);
+		rainbow_reset_detect_s_reason_set(FD_S_NORMAL);
+		rainbow_reset_detect_show();
+	}
+#endif
+
+#ifdef CONFIG_HUAWEI_BFM
+    /* only panic & watchdog, we record as a bootfail */
+	if(!in_panic) {
+		hwboot_clear_magic();
+	}
+#endif
 	if (qpnp_pon_check_hard_reset_stored()) {
 		/* Set warm reset as true when device is in dload mode */
-		if (get_dload_mode() ||
+		if (in_panic || get_dload_mode() ||
 			((cmd != NULL && cmd[0] != '\0') &&
 			!strcmp(cmd, "edl")))
 			need_warm_reset = true;
 	} else {
-		need_warm_reset = (get_dload_mode() ||
+		need_warm_reset = (in_panic || get_dload_mode() ||
 				(cmd != NULL && cmd[0] != '\0'));
 	}
 
@@ -333,8 +436,14 @@ static void msm_restart_prepare(const char *cmd)
 			if (!ret)
 				__raw_writel(0x6f656d00 | (code & 0xff),
 					     restart_reason);
+#ifdef CONFIG_HUAWEI_KERNEL_DEBUG
 		} else if (!strncmp(cmd, "edl", 3)) {
 			enable_emergency_dload_mode();
+#endif
+        #ifdef CONFIG_HUAWEI_RESET_DETECT
+		}else if (!strncmp(cmd, "emergency_restart", 17)) {
+		pr_info("do nothing\n");
+        #endif
 		} else {
 			__raw_writel(0x77665501, restart_reason);
 		}
@@ -399,7 +508,17 @@ static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 static void do_msm_poweroff(void)
 {
 	pr_notice("Powering off the SoC\n");
-
+#ifdef CONFIG_HUAWEI_RESET_DETECT
+	clear_reset_magic();
+#endif
+#ifdef CONFIG_RAINBOW_RESET_DETECT
+	if(!in_panic)
+	{
+		rainbow_reset_detect_m_reason_set(FD_M_NORMAL);
+		rainbow_reset_detect_s_reason_set(FD_S_NORMAL);
+		rainbow_reset_detect_show();
+	}
+#endif
 	set_dload_mode(0);
 	scm_disable_sdi();
 	qpnp_pon_system_pwr_off(PON_POWER_OFF_SHUTDOWN);
@@ -681,6 +800,30 @@ static struct platform_driver msm_restart_driver = {
 		.of_match_table = of_match_ptr(of_msm_restart_match),
 	},
 };
+
+#ifdef CONFIG_QCOM_DLOAD_MODE
+static int __init download_mode_setup(char *p)
+{
+	unsigned int value = 0;
+
+	if (NULL == p) {
+		pr_err("%s: input null\n", __func__);
+		return -EINVAL;
+	}
+
+	/* from string to unsigned int */
+	if (kstrtouint(p, 0, &value) < 0) {
+		pr_err("%s: Failed to get download mode\n", __func__);
+		return -EINVAL;
+	}
+
+	download_mode = value;
+
+	return 0;
+}
+
+early_param("restart.download_mode", download_mode_setup);
+#endif
 
 static int __init msm_restart_init(void)
 {

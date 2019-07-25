@@ -17,17 +17,20 @@
 #include <linux/slab.h>
 #include <linux/pmic-voter.h>
 #include "step-chg-jeita.h"
+#include "smb-lib.h"
 
-#define MAX_STEP_CHG_ENTRIES	8
 #define STEP_CHG_VOTER		"STEP_CHG_VOTER"
 #define JEITA_VOTER		"JEITA_VOTER"
+#define BATT_PROFILE_VOTER "BATT_PROFILE_VOTER"
 
-#define is_between(left, right, value) \
-		(((left) >= (right) && (left) >= (value) \
-			&& (value) >= (right)) \
-		|| ((left) <= (right) && (left) <= (value) \
-			&& (value) <= (right)))
+//move to step-chg-jeita.h
 
+ /*#define is_between(left, right, value) \
+ *		(((left) >= (right) && (left) >= (value) \
+ *			&& (value) >= (right)) \
+ *		|| ((left) <= (right) && (left) <= (value) \
+ *			&& (value) <= (right)))
+*/
 struct range_data {
 	u32 low_threshold;
 	u32 high_threshold;
@@ -66,6 +69,7 @@ struct step_chg_info {
 
 	struct votable		*fcc_votable;
 	struct votable		*fv_votable;
+	struct votable		*chg_disable_votable;
 	struct wakeup_source	*step_chg_ws;
 	struct power_supply	*batt_psy;
 	struct delayed_work	status_change_work;
@@ -75,7 +79,7 @@ struct step_chg_info {
 static struct step_chg_info *the_chip;
 
 #define STEP_CHG_HYSTERISIS_DELAY_US		5000000 /* 5 secs */
-
+#define BASP_CHG_FLOAT_VOLTAGE_UV		4200000
 /*
  * Step Charging Configuration
  * Update the table based on the battery profile
@@ -105,6 +109,7 @@ static struct step_chg_cfg step_chg_config = {
 	 *	},
 	 */
 };
+
 
 /*
  * Jeita Charging Configuration
@@ -143,7 +148,7 @@ static struct jeita_fv_cfg jeita_fv_config = {
 static bool is_batt_available(struct step_chg_info *chip)
 {
 	if (!chip->batt_psy)
-		chip->batt_psy = power_supply_get_by_name("battery");
+		chip->batt_psy = power_supply_get_by_name("bk_battery");
 
 	if (!chip->batt_psy)
 		return false;
@@ -181,16 +186,7 @@ static int get_val(struct range_data *range, int hysteresis, int current_index,
 	 * Check for hysteresis if it in the neighbourhood
 	 * of our current index.
 	 */
-	if (*new_index == current_index + 1) {
-		if (threshold < range[*new_index].low_threshold + hysteresis) {
-			/*
-			 * Stay in the current index, threshold is not higher
-			 * by hysteresis amount
-			 */
-			*new_index = current_index;
-			*val = range[current_index].value;
-		}
-	} else if (*new_index == current_index - 1) {
+	if (*new_index == current_index - 1) {
 		if (threshold > range[*new_index].high_threshold - hysteresis) {
 			/*
 			 * stay in the current index, threshold is not lower
@@ -282,7 +278,7 @@ static int handle_jeita(struct step_chg_info *chip)
 		if (chip->fcc_votable)
 			vote(chip->fcc_votable, JEITA_VOTER, false, 0);
 		if (chip->fv_votable)
-			vote(chip->fv_votable, JEITA_VOTER, false, 0);
+			vote(chip->fv_votable, BATT_PROFILE_VOTER, false, 0);
 		return 0;
 	}
 
@@ -297,7 +293,6 @@ static int handle_jeita(struct step_chg_info *chip)
 				step_chg_config.prop_name, rc);
 		return rc;
 	}
-
 	rc = get_val(jeita_fcc_config.fcc_cfg, jeita_fcc_config.hysteresis,
 			chip->jeita_fcc_index,
 			pval.intval,
@@ -326,7 +321,7 @@ static int handle_jeita(struct step_chg_info *chip)
 	if (rc < 0) {
 		/* remove the vote if no step-based fcc is found */
 		if (chip->fv_votable)
-			vote(chip->fv_votable, JEITA_VOTER, false, 0);
+			vote(chip->fv_votable, BATT_PROFILE_VOTER, false, 0);
 		goto update_time;
 	}
 
@@ -334,9 +329,19 @@ static int handle_jeita(struct step_chg_info *chip)
 	if (!chip->fv_votable)
 		goto update_time;
 
-	vote(chip->fv_votable, JEITA_VOTER, true, fv_uv);
+	rc = power_supply_get_property(chip->batt_psy,
+			POWER_SUPPLY_PROP_VOLTAGE_MAX, &pval);
+	if (rc < 0) {
+		pr_err("Couldn't read property rc=%d\n",rc);
+		return rc;
+	}
+	if (pval.intval >= BASP_CHG_FLOAT_VOLTAGE_UV){
+		fv_uv = min(pval.intval,fv_uv);
+	}
 
-	pr_debug("%s = %d FCC = %duA FV = %duV\n",
+	vote(chip->fv_votable, BATT_PROFILE_VOTER, true, fv_uv);
+
+	pr_err("%s = %d FCC = %duA FV = %duV\n",
 		step_chg_config.prop_name, pval.intval, fcc_ua, fv_uv);
 
 update_time:
@@ -390,8 +395,9 @@ static int step_chg_notifier_call(struct notifier_block *nb,
 	if (ev != PSY_EVENT_PROP_CHANGED)
 		return NOTIFY_OK;
 
-	if ((strcmp(psy->desc->name, "battery") == 0)) {
+	if ((strcmp(psy->desc->name, "battery") == 0)||(strcmp(psy->desc->name, "bk_battery") == 0)) {
 		__pm_stay_awake(chip->step_chg_ws);
+		pr_info("%s %s changed\n",__func__,psy->desc->name);
 		schedule_delayed_work(&chip->status_change_work, 0);
 	}
 
@@ -498,4 +504,55 @@ void qcom_step_chg_deinit(void)
 	wakeup_source_unregister(chip->step_chg_ws);
 	the_chip = NULL;
 	kfree(chip);
+}
+
+void sw_dt_set_step_chg_hysteresis(int hysteresis, enum sw_dt_chg_cfg_idx  mode)
+{
+
+	if(hysteresis < 0)
+		return;
+
+	switch(mode) {
+	case JEITA_FCC_CFG:
+		jeita_fcc_config.hysteresis = hysteresis;
+		break;
+	case JEITA_FV_CFG:
+		jeita_fv_config.hysteresis = hysteresis;
+		break;
+	default:
+		break;
+	}
+
+}
+
+void sw_dt_set_step_chg_cfg(int *cfg, int cfg_len, enum sw_dt_chg_cfg_idx  mode)
+{
+	int i =0;
+	if(cfg_len > MAX_STEP_CHG_ENTRIES)
+		pr_err("Parse the dt and the cfg is %d, exceed MAX_STEP_CHG_ENTRIES, set to MAX",cfg_len);
+		cfg_len = MAX_STEP_CHG_ENTRIES;
+
+	switch(mode) {
+	case JEITA_FCC_CFG:
+		for(i=0; i < cfg_len; i++)
+		{
+			jeita_fcc_config.fcc_cfg[i].low_threshold = cfg[i*MAX_STEP_FV_FCC_SIZE];
+			jeita_fcc_config.fcc_cfg[i].high_threshold = cfg[i*MAX_STEP_FV_FCC_SIZE + MAX_STEP_FCC_STEP_SIZE];
+			jeita_fcc_config.fcc_cfg[i].value = cfg[i*MAX_STEP_FV_FCC_SIZE + MAX_STEP_FV_STEP_SIZE];
+			pr_info("-jeita-cc-%d %d %d \n   " ,jeita_fcc_config.fcc_cfg[i].low_threshold,jeita_fcc_config.fcc_cfg[i].high_threshold,jeita_fcc_config.fcc_cfg[i].value );
+		}
+		break;
+	case JEITA_FV_CFG:
+
+		for(i=0; i < cfg_len; i++)
+		{
+			jeita_fv_config.fv_cfg[i].low_threshold = cfg[i*MAX_STEP_FV_FCC_SIZE];
+			jeita_fv_config.fv_cfg[i].high_threshold = cfg[i*MAX_STEP_FV_FCC_SIZE + MAX_STEP_FCC_STEP_SIZE];
+			jeita_fv_config.fv_cfg[i].value = cfg[i*MAX_STEP_FV_FCC_SIZE + MAX_STEP_FV_STEP_SIZE];
+			pr_info("-jeita-cc-%d %d %d \n   " ,jeita_fv_config.fv_cfg[i].low_threshold,jeita_fv_config.fv_cfg[i].high_threshold,jeita_fv_config.fv_cfg[i].value );
+		}
+		break;
+	default:
+		break;
+	}
 }

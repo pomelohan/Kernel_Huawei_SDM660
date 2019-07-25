@@ -494,6 +494,7 @@ static int qusb_phy_init(struct usb_phy *phy)
 	int ret, reset_val = 0;
 	u8 reg;
 	bool pll_lock_fail = false;
+	int final_tune2 = 0;
 
 	dev_dbg(phy->dev, "%s\n", __func__);
 
@@ -668,7 +669,8 @@ static int qusb_phy_init(struct usb_phy *phy)
 		dev_err(phy->dev, "QUSB PHY PLL LOCK fails:%x\n", reg);
 		WARN_ON(1);
 	}
-
+	final_tune2 = readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE2);
+	pr_info("otg parameter tune2 = %x\n", final_tune2);
 	return 0;
 }
 

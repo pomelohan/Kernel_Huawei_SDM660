@@ -23,10 +23,13 @@
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 
+#define FLASH_DEFAULT_CURRENT_MA 100
+
 DEFINE_MSM_MUTEX(msm_flash_mutex);
 
 static struct v4l2_file_operations msm_flash_v4l2_subdev_fops;
 static struct led_trigger *torch_trigger;
+static struct led_trigger *switch_trigger;
 
 static const struct of_device_id msm_flash_dt_match[] = {
 	{.compatible = "qcom,camera-flash", .data = NULL},
@@ -58,12 +61,22 @@ static struct msm_camera_i2c_fn_t msm_sensor_cci_func_tbl = {
 void msm_torch_brightness_set(struct led_classdev *led_cdev,
 				enum led_brightness value)
 {
-	if (!torch_trigger) {
-		pr_err("No torch trigger found, can't set brightness\n");
+	if (!torch_trigger || !switch_trigger){
+		pr_err("No torch trigger or no switch found, can't set brightness torch_trigger = %pK  switch_trigger = %pK\n",torch_trigger,switch_trigger);
 		return;
 	}
 
+	if(value > 0){
+		value = FLASH_DEFAULT_CURRENT_MA;
+	}
 	led_trigger_event(torch_trigger, value);
+
+	/* set switch trigger to enable or disable flash*/
+	if(value > 0){
+		led_trigger_event(switch_trigger, 1);
+	}else{
+		led_trigger_event(switch_trigger, 0);
+	}
 };
 
 static struct led_classdev msm_torch_led[MAX_LED_TRIGGERS] = {
@@ -95,6 +108,11 @@ static int32_t msm_torch_create_classdev(struct platform_device *pdev,
 	if (!fctrl) {
 		pr_err("Invalid fctrl\n");
 		return -EINVAL;
+	}
+
+	switch_trigger = fctrl->switch_trigger;
+	if(!switch_trigger){
+		pr_err("switch_trigger is null\n");
 	}
 
 	for (i = 0; i < fctrl->torch_num_sources; i++) {

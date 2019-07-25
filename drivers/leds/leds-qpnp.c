@@ -553,6 +553,7 @@ struct qpnp_led_data {
 	struct mpp_config_data		*mpp_cfg;
 	struct gpio_config_data		*gpio_cfg;
 	int				max_current;
+	int				led_cust_brightness;
 	bool				default_on;
 	bool				in_order_command_processing;
 	int				turn_off_delay_ms;
@@ -1887,7 +1888,8 @@ static int qpnp_led_set_max_brightness(struct qpnp_led_data *led)
 	case QPNP_ID_RGB_RED:
 	case QPNP_ID_RGB_GREEN:
 	case QPNP_ID_RGB_BLUE:
-		led->cdev.max_brightness = RGB_MAX_LEVEL;
+		//led->cdev.max_brightness = RGB_MAX_LEVEL;
+		led->cdev.max_brightness = led->led_cust_brightness;
 		break;
 	case QPNP_ID_LED_MPP:
 		if (led->mpp_cfg->pwm_mode == MANUAL_MODE)
@@ -3928,6 +3930,14 @@ static int qpnp_leds_probe(struct platform_device *pdev)
 		if (rc < 0) {
 			dev_err(&led->pdev->dev,
 				"Failure reading max_current, rc =  %d\n", rc);
+			goto fail_id_check;
+		}
+
+		rc = of_property_read_u32(temp, "qcom,max-brightness",
+			&led->led_cust_brightness);
+		if (rc < 0) {
+			dev_err(&led->pdev->dev,
+				"Failure reading led_cust_brightness, rc =  %d\n", rc);
 			goto fail_id_check;
 		}
 

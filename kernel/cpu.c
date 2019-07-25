@@ -580,10 +580,21 @@ static int switch_to_fair_policy(void)
 	return sched_setscheduler_nocheck(current, SCHED_NORMAL, &param);
 }
 
+bool cbt_mode = false;
+static int __init is_cbt_mode(char *str)
+{
+	cbt_mode = true;
+	return 0;
+}
+
+early_param("cbt_mode", is_cbt_mode);
+
 int cpu_up(unsigned int cpu)
 {
 	int err = 0;
 	int switch_err = 0;
+    if (cbt_mode)
+		return 0;
 
 	switch_err = switch_to_rt_policy();
 	if (switch_err < 0)

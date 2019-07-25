@@ -36,6 +36,7 @@
 
 #define BUF_DEBUG_FULL 0
 #define MAX_LIST_COUNT 100
+#define MEM_THRESHOLD_TO_BE_PRINT 2048
 
 static int msm_buf_check_head_sanity(struct msm_isp_bufq *bufq)
 {
@@ -738,7 +739,7 @@ static int msm_isp_buf_divert(struct msm_isp_buf_mgr *buf_mgr,
 
 static int msm_isp_buf_done(struct msm_isp_buf_mgr *buf_mgr,
 	uint32_t bufq_handle, uint32_t buf_index,
-	struct timeval *tv, uint32_t frame_id, uint32_t output_format)
+	struct timeval *tv, uint32_t frame_id, uint32_t output_format, bool is_empty_buffer)
 {
 	int rc = 0;
 	unsigned long flags;
@@ -767,7 +768,7 @@ static int msm_isp_buf_done(struct msm_isp_buf_mgr *buf_mgr,
 			spin_unlock_irqrestore(&bufq->bufq_lock, flags);
 			buf_mgr->vb2_ops->buf_done(buf_info->vb2_v4l2_buf,
 				bufq->session_id, bufq->stream_id,
-				frame_id, tv, output_format);
+				frame_id, tv, output_format, is_empty_buffer);
 		} else {
 			spin_unlock_irqrestore(&bufq->bufq_lock, flags);
 		}
@@ -888,7 +889,7 @@ static int msm_isp_buf_enqueue(struct msm_isp_buf_mgr *buf_mgr,
 				buf_info->buf_debug.put_state_last ^= 1;
 				rc = msm_isp_buf_done(buf_mgr,
 					info->handle, info->buf_idx,
-					buf_info->tv, buf_info->frame_id, 0);
+					buf_info->tv, buf_info->frame_id, 0, false);
 			}
 		}
 	} else {
@@ -998,8 +999,12 @@ static int msm_isp_request_bufq(struct msm_isp_buf_mgr *buf_mgr,
 		return -EINVAL;
 	}
 
+	if(sizeof(struct msm_isp_buffer) * buf_request->num_buf > MEM_THRESHOLD_TO_BE_PRINT)
+		pr_info("before kzalloc %lu in %s at line %d\n",sizeof(struct msm_isp_buffer) * buf_request->num_buf,__func__,__LINE__);
 	bufq->bufs = kzalloc(sizeof(struct msm_isp_buffer) *
 		buf_request->num_buf, GFP_KERNEL);
+	if(sizeof(struct msm_isp_buffer) * buf_request->num_buf > MEM_THRESHOLD_TO_BE_PRINT)
+		pr_info("after kzalloc %lu in %s at line %d\n",sizeof(struct msm_isp_buffer) * buf_request->num_buf,__func__,__LINE__);
 	if (!bufq->bufs) {
 		pr_err("No free memory for buf info\n");
 		msm_isp_free_bufq_handle(buf_mgr, buf_request->handle);

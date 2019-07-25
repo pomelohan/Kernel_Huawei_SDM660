@@ -34,6 +34,7 @@ enum print_reason {
 #define DCP_VOTER			"DCP_VOTER"
 #define QC_VOTER			"QC_VOTER"
 #define PL_USBIN_USBIN_VOTER		"PL_USBIN_USBIN_VOTER"
+#define USER_PSY_VOTER			"USER_PSY_VOTER"
 #define USB_PSY_VOTER			"USB_PSY_VOTER"
 #define PL_TAPER_WORK_RUNNING_VOTER	"PL_TAPER_WORK_RUNNING_VOTER"
 #define PL_QNOVO_VOTER			"PL_QNOVO_VOTER"
@@ -65,11 +66,15 @@ enum print_reason {
 #define OTG_DELAY_VOTER			"OTG_DELAY_VOTER"
 #define USBIN_I_VOTER			"USBIN_I_VOTER"
 #define WEAK_CHARGER_VOTER		"WEAK_CHARGER_VOTER"
+#define BATTCHG_USER_EN_VOTER	"BATTCHG_USER_EN_VOTER"
+#define PM_CHARGE_LOCK_VOTE     "PM_CHARGE_LOCK_VOTE"
+
 
 #define VCONN_MAX_ATTEMPTS	3
 #define OTG_MAX_ATTEMPTS	3
 #define BOOST_BACK_STORM_COUNT	3
 #define WEAK_CHG_STORM_COUNT	8
+#define SFT_CFG_ENABLE_CFG				0x10A0
 
 enum smb_mode {
 	PARALLEL_MASTER = 0,
@@ -236,6 +241,8 @@ struct smb_charger {
 	int			smb_version;
 	int			otg_delay_ms;
 	int			*weak_chg_icl_ua;
+	bool		is_support_charge_lock;
+	bool		charge_lock_mark;
 
 	/* locks */
 	struct mutex		lock;
@@ -252,6 +259,7 @@ struct smb_charger {
 	struct power_supply_desc	usb_psy_desc;
 	struct power_supply		*usb_main_psy;
 	struct power_supply		*usb_port_psy;
+	struct power_supply		*extra_batt_psy;
 	enum power_supply_type		real_charger_type;
 
 	/* notifiers */
@@ -283,6 +291,7 @@ struct smb_charger {
 	struct votable		*hvdcp_hw_inov_dis_votable;
 	struct votable		*usb_irq_enable_votable;
 	struct votable		*typec_irq_disable_votable;
+	struct votable		*pm_charge_votable;
 
 	/* work */
 	struct work_struct	bms_update_work;
@@ -308,6 +317,14 @@ struct smb_charger {
 	int			system_temp_level;
 	int			thermal_levels;
 	int			*thermal_mitigation;
+	int			fcc_hysteresis;
+	int			fv_hysteresis;
+	int			jtfcc_levels;
+	int			*jeita_fcc_cfg;
+	int			jtfv_levels;
+	int			*jeita_fv_cfg;
+	int 		jtft_levels;
+	int			*jeita_temp_comp_cfg;
 	int			dcp_icl_ua;
 	int			fake_capacity;
 	bool			step_chg_enabled;
@@ -335,6 +352,7 @@ struct smb_charger {
 	u8			float_cfg;
 	bool			use_extcon;
 	bool			otg_present;
+	bool               safety_timer_en;
 
 	/* workaround flag */
 	u32			wa_flags;
@@ -349,10 +367,20 @@ struct smb_charger {
 	/* battery profile */
 	int			batt_profile_fcc_ua;
 	int			batt_profile_fv_uv;
-
+	int			qc2_max_pulses;
+	bool			non_compliant_chg_detected;
 	/* qnovo */
 	int			usb_icl_delta_ua;
 	int			pulse_cnt;
+	const char			*bms_psy_name;
+
+	/* input charge current*/
+	int			current_cdp_ua;
+	int			current_dcp_ua;
+	int			current_float_ua;
+	int			current_hvdcp_ua;
+	int         adaptor_change;
+	int          fcp_status;
 };
 
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val);
@@ -520,4 +548,8 @@ int smblib_set_prop_pr_swap_in_progress(struct smb_charger *chg,
 
 int smblib_init(struct smb_charger *chg);
 int smblib_deinit(struct smb_charger *chg);
+int smbchg_safety_timer_enable(struct smb_charger *chg, bool enable);
+int get_prop_batt_voltage_max_design(struct smb_charger *chg);
+int smblib_set_prop_set_adaptor_voltage(struct smb_charger *chg,
+				const union power_supply_propval *va);
 #endif /* __SMB2_CHARGER_H */

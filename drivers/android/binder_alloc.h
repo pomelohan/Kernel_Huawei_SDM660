@@ -22,6 +22,10 @@
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 
+#ifdef CONFIG_HUAWEI_BINDER_ASHMEM
+#include "binder_ashmem.h"
+#endif
+
 struct binder_transaction;
 
 /**
@@ -57,6 +61,11 @@ struct binder_buffer {
 	size_t data_size;
 	size_t offsets_size;
 	size_t extra_buffers_size;
+
+#ifdef CONFIG_HUAWEI_BINDER_ASHMEM
+	struct binder_ashmem ashmem;
+#endif
+
 	uint8_t data[0];
 };
 
@@ -100,6 +109,10 @@ struct binder_alloc {
 	size_t buffer_size;
 	uint32_t buffer_free;
 	int pid;
+#ifdef CONFIG_HUAWEI_BINDER_ASHMEM
+	atomic_t ashmem_size;
+	size_t max_ashmem_size;
+#endif
 };
 
 extern struct binder_buffer *binder_alloc_new_buf(struct binder_alloc *alloc,

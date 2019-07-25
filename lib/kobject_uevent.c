@@ -27,6 +27,10 @@
 #include <net/net_namespace.h>
 
 
+#ifdef CONFIG_HUAWEI_DUBAI
+#include <linux/dubai.h>
+#endif
+
 u64 uevent_seqnum;
 #ifdef CONFIG_UEVENT_HELPER
 char uevent_helper[UEVENT_HELPER_PATH_LEN] = CONFIG_UEVENT_HELPER_PATH;
@@ -323,6 +327,9 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 		} else
 			retval = -ENOMEM;
 	}
+#endif
+#ifdef CONFIG_HUAWEI_DUBAI
+	dubai_log_uevent(devpath, action);
 #endif
 	mutex_unlock(&uevent_sock_mutex);
 

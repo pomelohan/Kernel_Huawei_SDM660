@@ -37,6 +37,8 @@ static unsigned int *freq_table_ptr[NR_CPUS];
 static uint32_t *voltage_table_ptr[NR_CPUS];
 static DEFINE_MUTEX(ioctl_access_mutex);
 
+/* thermal config AR000AFR67 delete for adding to new file */
+
 static int msm_thermal_ioctl_open(struct inode *node, struct file *filep)
 {
 	int ret = 0;
@@ -397,7 +399,11 @@ int msm_thermal_ioctl_init()
 		goto ioctl_clean_all;
 	}
 
+    /* thermal config AR000AFR67 delete for adding to new file */
+
 	return ret;
+
+    /* thermal config AR000AFR67 delete for adding to new file */
 
 ioctl_clean_all:
 	device_destroy(thermal_class, thermal_dev);

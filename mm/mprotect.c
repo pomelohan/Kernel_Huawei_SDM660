@@ -78,7 +78,9 @@ static unsigned long change_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 		if (pte_present(oldpte)) {
 			pte_t ptent;
 			bool preserve_write = prot_numa && pte_write(oldpte);
-
+#ifdef CONFIG_NON_SWAP
+			struct page *page1;
+#endif
 			/*
 			 * Avoid trapping faults against the zero or KSM
 			 * pages. See similar comment in change_huge_pmd.
@@ -106,6 +108,11 @@ static unsigned long change_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 					 !(vma->vm_flags & VM_SOFTDIRTY))) {
 				ptent = pte_mkwrite(ptent);
 			}
+#ifdef CONFIG_NON_SWAP
+			page1 = vm_normal_page(vma, addr, oldpte);
+			if (page1 && PageNonSwap(page1))
+				ptent = pte_wrprotect(ptent);
+#endif
 			ptep_modify_prot_commit(mm, addr, pte, ptent);
 			pages++;
 		} else if (IS_ENABLED(CONFIG_MIGRATION)) {

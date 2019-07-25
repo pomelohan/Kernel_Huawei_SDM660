@@ -93,6 +93,8 @@ struct bdi_writeback {
 
 	struct percpu_counter stat[NR_WB_STAT_ITEMS];
 
+	atomic_t dirty_sleeping;    /* waiting on dirty limit exceeded */
+
 	struct bdi_writeback_congested *congested;
 
 	unsigned long bw_time_stamp;	/* last time write bw is updated */

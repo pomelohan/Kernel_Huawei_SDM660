@@ -1334,6 +1334,24 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		}
   	}
 
+#ifdef CONFIG_LATE_UNMAP
+	if ((flags & TTU_CHECK_DIRTY) || (flags & TTU_READONLY)) {
+		pteval = *pte;
+
+		if ((flags & TTU_CHECK_DIRTY) && pte_dirty(pteval)) {
+			set_page_dirty(page);
+			pteval = pte_mkclean(pteval);
+		}
+
+		if (flags & TTU_READONLY)
+			pteval = pte_wrprotect(pteval);
+
+		if (!pte_same(*pte, pteval))
+			set_pte_at(mm, address, pte, pteval);
+		goto out_unmap;
+	}
+#endif
+
 	/* Nuke the page table entry. */
 	flush_cache_page(vma, address, page_to_pfn(page));
 	if (should_defer_flush(mm, flags)) {
@@ -1499,6 +1517,11 @@ int try_to_unmap(struct page *page, enum ttu_flags flags,
 
 	ret = rmap_walk(page, &rwc);
 
+#ifdef CONFIG_LATE_UNMAP
+	if ((flags & (TTU_READONLY | TTU_CHECK_DIRTY)) &&
+	    ret == SWAP_AGAIN)
+		ret = SWAP_SUCCESS;
+#endif
 	if (ret != SWAP_MLOCK && !page_mapped(page))
 		ret = SWAP_SUCCESS;
 	return ret;
